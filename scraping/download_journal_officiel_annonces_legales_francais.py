@@ -1,129 +1,122 @@
-# Journal officiel des annonces légales, sharia et judiciaires
+# Journal officiel des annonces légales, sharia et judiciaires (Français)
 # Downloads all issues for a range of years using the year selector.
 # Files are saved under:
-#   pdfs/Journal_Officiel_Annonces_Legales/
-#       2024/
-#       2025/
-#       2026/
+#   <base_dir>/<year>/
+#
+# Checkpoint is saved in:
+#   checkpoints/download_journal_officiel_annonces_legales_francais.checkpoint.json
 
 from playwright.sync_api import sync_playwright
 import os
 import re
 import time
+import json
+import sys
 
-# ============================================================
-#  CONFIGURATION
-# ============================================================
-START_YEAR = 2024
-END_YEAR   = 2026
-# ============================================================
+from scraper_common import (
+    DEFAULT_START_URL,
+    build_common_parser,
+    validate_common_args,
+    ensure_year_dirs,
+    checkpoint_path_for_script,
+    load_checkpoint,
+    update_checkpoint_file,
+    finalize_checkpoint,
+    build_run_summary,
+)
 
-START_URL = "http://www.iort.gov.tn/WD120AWP/WD120Awp.exe/CONNECT/SITEIORT"
-BASE_DIR  = "pdfs/Journal_Officiel_Annonces_Legales"
+DEFAULT_BASE_DIR = "pdfs/Journal_Officiel_Annonces_Legales"
+SCRIPT_NAME = "download_journal_officiel_annonces_legales_francais.py"
 
-for y in range(START_YEAR, END_YEAR + 1):
-    os.makedirs(os.path.join(BASE_DIR, str(y)), exist_ok=True)
+
+def build_parser():
+    return build_common_parser(
+        description="Download JORT Annonces Légales (FR) PDFs.",
+        default_base_dir=DEFAULT_BASE_DIR,
+        default_start_url=DEFAULT_START_URL,
+    )
+
 
 def parse_date(date_str):
-    """Parse date string like '27/03/2026' to '2026-03-27' and return year"""
+    """Parse date string like '27/03/2026' to '2026-03-27' and return year."""
     d, m, y = date_str.split('/')
     return f"{y}-{m}-{d}", y
 
-def navigate_to_table(page, year):
-    """Navigate from homepage to the table of issues for the given year."""
+
+def go_to_search(page, cfg):
+    """Navigate from homepage to the search page."""
     print("  🌐 Loading homepage...")
-    page.goto(START_URL, wait_until="networkidle", timeout=30000)
-    
+    page.goto(cfg.start_url, wait_until="networkidle", timeout=cfg.nav_timeout_ms)
+
     # Step 1: Click the "Français" link
     try:
-        page.wait_for_selector('a[name="M32"]', timeout=10000)
+        page.wait_for_selector('a[name="M32"]', timeout=cfg.selector_timeout_ms)
         page.click('a[name="M32"]')
-        page.wait_for_load_state("networkidle", timeout=15000)
+        page.wait_for_load_state("networkidle", timeout=cfg.nav_timeout_ms)
         print("  ✅ Clicked 'Français' link")
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(cfg.page_wait_ms)
     except Exception as e:
         print(f"  ⚠️ Could not click Français link: {e}")
-    
-    # Step 2: Click "Journal annonces légales" (M8)
-    try:
-        page.wait_for_selector('a[name="M8"]', timeout=10000)
-        page.click('a[name="M8"]')
-        page.wait_for_load_state("networkidle", timeout=15000)
-        print("  ✅ Clicked 'Journal annonces légales' link")
-        page.wait_for_timeout(1000)
-    except Exception as e:
-        print(f"  ❌ Could not click Journal annonces légales link: {e}")
-        raise
-    
-    # Step 3: Click "Recherche" (A10)
-    try:
-        page.wait_for_selector('a[name="A10"]', timeout=10000)
-        page.click('a[name="A10"]')
-        page.wait_for_load_state("networkidle", timeout=15000)
-        print("  ✅ Clicked 'Recherche' link")
-        page.wait_for_timeout(1000)
-    except Exception as e:
-        print(f"  ❌ Could not click Recherche link: {e}")
-        raise
-    
-    # Step 4: Hover over "Journal annonce" (A20)
-    try:
-        page.wait_for_selector('a[name="A20"]', timeout=10000)
-        page.hover('a[name="A20"]')
-        page.wait_for_timeout(500)
-        print("  ✅ Hovered over 'Journal annonce'")
-    except Exception as e:
-        print(f"  ⚠️ Could not hover over A20: {e}")
-    
-    # Step 5: Click "Année journal" (A4)
-    try:
-        page.wait_for_selector('a[name="A4"]', timeout=10000)
-        page.click('a[name="A4"]')
-        page.wait_for_load_state("networkidle", timeout=15000)
-        print("  ✅ Clicked 'Année journal' link")
-        page.wait_for_timeout(500)
-    except Exception as e:
-        print(f"  ❌ Could not click Année journal link: {e}")
-        raise
-    
-    # Step 6: Select the year from dropdown (A19)
-    try:
-        page.wait_for_selector('select#A19', timeout=15000)
-        page.select_option('select#A19', label=str(year))
-        page.wait_for_load_state("networkidle", timeout=15000)
-        page.wait_for_timeout(1000)
-        print(f"  ✅ Selected year {year}")
-    except Exception as e:
-        print(f"  ❌ Year select error: {e}")
-        raise
 
-def get_rows(page):
+    # Step 2: Click "Journal annonces légales" (M8)
+    page.wait_for_selector('a[name="M8"]', timeout=cfg.selector_timeout_ms)
+    page.click('a[name="M8"]')
+    page.wait_for_load_state("networkidle", timeout=cfg.nav_timeout_ms)
+    print("  ✅ Clicked 'Journal annonces légales' link")
+    page.wait_for_timeout(cfg.page_wait_ms)
+
+    # Step 3: Click "Recherche" (A10)
+    page.wait_for_selector('a[name="A10"]', timeout=cfg.selector_timeout_ms)
+    page.click('a[name="A10"]')
+    page.wait_for_load_state("networkidle", timeout=cfg.nav_timeout_ms)
+    print("  ✅ Clicked 'Recherche' link")
+    page.wait_for_timeout(cfg.page_wait_ms)
+
+    # Step 4: Hover over "Journal annonce" (A20)
+    page.wait_for_selector('a[name="A20"]', timeout=cfg.selector_timeout_ms)
+    page.hover('a[name="A20"]')
+    page.wait_for_timeout(cfg.short_wait_ms)
+    print("  ✅ Hovered over 'Journal annonce'")
+
+    # Step 5: Click "Année journal" (A4)
+    page.wait_for_selector('a[name="A4"]', timeout=cfg.selector_timeout_ms)
+    page.click('a[name="A4"]')
+    page.wait_for_load_state("networkidle", timeout=cfg.nav_timeout_ms)
+    print("  ✅ Clicked 'Année journal' link")
+    page.wait_for_timeout(cfg.page_wait_ms)
+
+    # Confirm year selector is present
+    page.wait_for_selector('select#A19', timeout=cfg.selector_timeout_ms)
+    print("  ✅ Search page loaded, year selector found")
+    page.wait_for_timeout(cfg.page_wait_ms)
+
+
+def get_rows(page, cfg):
     """
     Extract all rows from current table page.
     Rows are in tr elements with id like "A5_1", "A5_2", etc.
     Each row contains two links: issue number and date.
     """
-    rows = []
     try:
-        # Wait for table rows to be present
-        page.wait_for_selector('tr[id^="A5_"]', timeout=10000)
-        
+        page.wait_for_selector('tr[id^="A5_"]', timeout=cfg.selector_timeout_ms)
+        page.wait_for_timeout(cfg.page_wait_ms)
+        rows = []
         for tr in page.query_selector_all('tr[id^="A5_"]'):
             try:
                 links = tr.query_selector_all('a')
                 if len(links) >= 2:
                     issue_num = links[0].inner_text().strip()
                     date_str = links[1].inner_text().strip()
-                    # Validate format: issue should be 3 digits, date should have slashes
                     if re.match(r'\d{3}', issue_num) and '/' in date_str:
                         rows.append((issue_num, date_str, links[1]))
             except Exception as e:
                 print(f"     ⚠️ Error parsing row: {e}")
                 continue
+        return rows
     except Exception as e:
         print(f"     ⚠️ get_rows error: {e}")
-    
-    return rows
+        return []
+
 
 def get_next_page_url(page):
     """Find the '>' link for next page navigation."""
@@ -141,93 +134,179 @@ def get_next_page_url(page):
         print(f"     ⚠️ Error finding next page: {e}")
     return None
 
-with sync_playwright() as p:
-    browser = p.chromium.launch(headless=False)
-    context = browser.new_context(accept_downloads=True)
-    page = context.new_page()
+
+def retry_go_to_search(page, args, retries):
+    """Retry navigation to search page on transient failures."""
+    last_error = None
+    for attempt in range(1, retries + 1):
+        try:
+            go_to_search(page, args)
+            return
+        except Exception as e:
+            last_error = e
+            print(f"  ⚠️ Navigation attempt {attempt}/{retries} failed: {e}")
+            sleep_s = min(2 * attempt, 6)
+            print(f"  ⏳ Retrying in {sleep_s}s...")
+            time.sleep(sleep_s)
+            try:
+                page.goto("about:blank", timeout=args.nav_timeout_ms)
+            except Exception:
+                pass
+    raise RuntimeError(f"Navigation failed after {retries} attempts: {last_error}")
+
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+    validate_common_args(args)
+    ensure_year_dirs(args.base_dir, args.start_year, args.end_year)
+
+    checkpoint_file = checkpoint_path_for_script(SCRIPT_NAME)
+    checkpoint = load_checkpoint(
+        checkpoint_file,
+        script_name=SCRIPT_NAME,
+        base_dir=args.base_dir,
+        start_year=args.start_year,
+        end_year=args.end_year,
+        start_url=args.start_url,
+    )
 
     total_downloaded = 0
-    total_skipped    = 0
+    total_skipped = 0
+    total_failed = 0
+    started_at = time.time()
 
-    for year in range(START_YEAR, END_YEAR + 1):
-        print(f"\n{'='*50}")
-        print(f"📅 Processing year {year}...")
-        print(f"{'='*50}")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=args.headless)
+        context = browser.new_context(accept_downloads=True)
+        page = context.new_page()
 
-        try:
-            navigate_to_table(page, year)
-        except Exception as e:
-            print(f"  ❌ Navigation error: {e}")
-            continue
-
-        year_downloaded = 0
-        year_skipped    = 0
-        page_num        = 1
-
-        while True:
-            print(f"\n  📄 Table page {page_num}...")
+        for year in range(args.start_year, args.end_year + 1):
+            print(f"\n{'='*50}")
+            print(f"📅 Processing year {year}...")
+            print(f"{'='*50}")
 
             try:
-                rows = get_rows(page)
+                retry_go_to_search(page, args, retries=args.retries)
             except Exception as e:
-                print(f"     ❌ Error reading rows: {e}")
-                break
+                print(f"  ❌ Navigation error after retries: {e}")
+                total_failed += 1
+                continue
 
-            print(f"     Found {len(rows)} issues")
+            try:
+                page.select_option('select#A19', label=str(year))
+                page.wait_for_load_state("networkidle", timeout=args.nav_timeout_ms)
+                page.wait_for_timeout(args.page_wait_ms)
+                print(f"  ✅ Selected year {year}")
+            except Exception as e:
+                print(f"  ❌ Year select error: {e}")
+                total_failed += 1
+                continue
 
-            if not rows:
-                print("     No rows found, stopping.")
-                break
+            table_page = 1
+            year_downloaded = 0
+            year_skipped = 0
 
-            for issue_num, date_str, date_link in rows:
-                date_iso, issue_year = parse_date(date_str)
-                year_dir = os.path.join(BASE_DIR, issue_year)
-                os.makedirs(year_dir, exist_ok=True)
+            while True:
+                print(f"\n  📄 Table page {table_page}...")
+                rows = get_rows(page, args)
+                print(f"     Found {len(rows)} issues")
 
-                filename = f"JORT_Annonces_{issue_num}_{date_iso}.pdf"
-                filepath = os.path.join(year_dir, filename)
+                if not rows:
+                    print("     No rows found, stopping.")
+                    break
 
-                if os.path.exists(filepath):
-                    print(f"     {issue_num} ({date_str}) → ⏩ already exists")
-                    year_skipped += 1
-                    continue
+                for issue_num, date_str, date_link in rows:
+                    date_iso, issue_year = parse_date(date_str)
+                    year_dir = os.path.join(args.base_dir, issue_year)
+                    os.makedirs(year_dir, exist_ok=True)
 
+                    filename = f"JORT_Annonces_{issue_num}_{date_iso}.pdf"
+                    filepath = os.path.join(year_dir, filename)
+
+                    if os.path.exists(filepath):
+                        print(f"     {issue_num} ({date_str}) → ⏩ already exists")
+                        year_skipped += 1
+                        continue
+
+                    try:
+                        with page.expect_download(timeout=args.download_timeout_ms) as dl_info:
+                            date_link.click()
+                        dl = dl_info.value
+                        dl.save_as(filepath)
+                        print(f"     {issue_num} ({date_str}) → ✅ {filename}")
+                        year_downloaded += 1
+                        total_downloaded += 1
+                        time.sleep(args.sleep_after_download_s)
+
+                        update_checkpoint_file(
+                            checkpoint=checkpoint,
+                            checkpoint_file=checkpoint_file,
+                            issue_num=issue_num,
+                            date_iso=date_iso,
+                            year=issue_year,
+                            filename=filename,
+                            filepath=filepath,
+                            status="downloaded",
+                            error="",
+                        )
+                    except Exception as e:
+                        print(f"     {issue_num} ({date_str}) → ❌ {e}")
+                        total_failed += 1
+
+                next_url = get_next_page_url(page)
+                if not next_url:
+                    print(f"\n  ✅ No more pages for {year}.")
+                    break
+
+                print(f"\n  ➡️ Next table page...")
                 try:
-                    with page.expect_download(timeout=60000) as dl_info:
-                        date_link.click()
-                    dl = dl_info.value
-                    dl.save_as(filepath)
-                    print(f"     {issue_num} ({date_str}) → ✅ {filename}")
-                    year_downloaded += 1
-                    time.sleep(0.5)
+                    page.goto(next_url, wait_until="networkidle", timeout=args.nav_timeout_ms)
+                    page.wait_for_timeout(args.page_wait_ms)
+                    table_page += 1
                 except Exception as e:
-                    print(f"     {issue_num} ({date_str}) → ❌ {e}")
+                    print(f"  ❌ Pagination error: {e}")
+                    total_failed += 1
+                    break
 
-            # Find next page URL
-            next_url = get_next_page_url(page)
-            if not next_url:
-                print(f"\n  ✅ No more pages for {year}.")
-                break
+            total_skipped += year_skipped
+            print(f"\n  📊 Year {year}: Downloaded {year_downloaded} | Skipped {year_skipped}")
 
-            print(f"\n  ➡️  Next table page...")
-            try:
-                page.goto(next_url, wait_until="networkidle", timeout=60000)
-                page.wait_for_timeout(800)
-                page_num += 1
-            except Exception as e:
-                print(f"  ❌ Pagination error: {e}")
-                break
+        browser.close()
 
-        total_downloaded += year_downloaded
-        total_skipped    += year_skipped
-        print(f"\n  📊 Year {year}: Downloaded {year_downloaded} | Skipped {year_skipped}")
+    duration_sec = round(time.time() - started_at, 2)
 
-    browser.close()
-    print(f"""
-{'='*50}
-✅ All done!
-  Downloaded : {total_downloaded}
-  Skipped    : {total_skipped}
-  Saved to   : ./{BASE_DIR}/<year>/
-{'='*50}
-""")
+    finalize_checkpoint(
+        checkpoint=checkpoint,
+        checkpoint_file=checkpoint_file,
+        downloaded=total_downloaded,
+        skipped=total_skipped,
+        failed=total_failed,
+    )
+
+    summary = build_run_summary(
+        script_name=SCRIPT_NAME,
+        args=args,
+        downloaded=total_downloaded,
+        skipped=total_skipped,
+        failed=total_failed,
+        duration_sec=duration_sec,
+    )
+
+    print(f"\n{'='*50}")
+    print("✅ All done!")
+    print(f"  Downloaded : {total_downloaded}")
+    print(f"  Skipped    : {total_skipped}")
+    print(f"  Failed     : {total_failed}")
+    print(f"  Saved to   : ./{args.base_dir}/<year>")
+    print(f"  Checkpoint : {checkpoint_file}")
+    print(f"{'='*50}")
+    print(json.dumps(summary, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as ex:
+        print(json.dumps({"status": "error", "error": str(ex)}, ensure_ascii=False))
+        sys.exit(1)
