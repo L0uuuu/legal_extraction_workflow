@@ -2,3 +2,5 @@
 # pip install -r requirements.txt
 playwright>1.30.0
 #playwright install chromium
+fastapi>=0.110.0
+uvicorn>=0.29.0
