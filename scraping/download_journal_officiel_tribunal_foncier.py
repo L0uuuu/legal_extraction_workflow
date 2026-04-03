@@ -284,6 +284,8 @@ def main():
     print(f"  Checkpoint : {checkpoint_file}")
     print(f"{'='*50}")
     print(json.dumps(summary, ensure_ascii=False))
+    if total_failed > 0 and total_downloaded == 0 and total_skipped == 0:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
