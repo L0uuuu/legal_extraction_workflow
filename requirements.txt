@@ -1,6 +1,15 @@
 # This file lists the dependencies for the project. You can install them using pip:
 # pip install -r requirements.txt
+
+# Phase 1 — Scraping
 playwright>1.30.0
 #playwright install chromium
+
+# API
 fastapi>=0.110.0
 uvicorn>=0.29.0
+
+# Phase 3 — Text extraction
+PyMuPDF>=1.24.0
+google-genai>=1.0.0
+python-dotenv>=1.0.0

@@ -5,6 +5,7 @@ __pycache__/
 
 #env files
 .env
+credentials.json
 
 #IDE files
 .vscode/    
@@ -12,6 +13,7 @@ __pycache__/
 #folders
 checkpoints
 pdfs
+txt
 
 #claude md files
 claude context

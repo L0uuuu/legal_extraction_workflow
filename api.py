@@ -1,5 +1,5 @@
 """
-JORT Workflow API — FastAPI wrapper for scraping and upload jobs.
+JORT Workflow API — FastAPI wrapper for scraping, upload, and text extraction jobs.
 
 Run from the repo root:
     uvicorn api:app --port 8000 --reload
@@ -13,6 +13,10 @@ Scraping endpoints:
 Uploading endpoints:
     POST /legal_extraction/uploading_google_drive/run
     GET  /legal_extraction/uploading_google_drive/jobs
+
+Text extraction endpoints:
+    POST /legal_extraction/text_extraction/run
+    GET  /legal_extraction/text_extraction/jobs
 
 Shared endpoints:
     GET  /legal_extraction/status/{job_id}
@@ -55,6 +59,8 @@ UPLOAD_SCRIPTS: dict[str, list[str]] = {
     "upload_gdrive": ["rclone", "copy", "pdfs/", "gdrive:JORT/", "--progress"],
 }
 
+TEXT_EXTRACTION_SCRIPT = "text_extraction/extract_text.py"
+
 # ---------------------------------------------------------------------------
 # Request models
 # ---------------------------------------------------------------------------
@@ -84,6 +90,15 @@ class UploadRunRequest(BaseModel):
         description=f"Upload script key. One of: {list(UPLOAD_SCRIPTS.keys())}",
         examples=["upload_gdrive"],
     )
+
+
+class TextExtractionRunRequest(BaseModel):
+    pdf: str | None       = Field(None, description="Single PDF path for testing (relative to repo root)")
+    pdfs_dir: str         = Field("pdfs", description="Root directory of downloaded PDFs")
+    txt_dir: str          = Field("txt", description="Root directory for output .txt files")
+    min_text_len: int     = Field(50, description="Chars threshold below which a page goes to Gemini")
+    max_image_coverage: float = Field(0.15, description="Image area fraction above which a page goes to Gemini")
+    dpi: int              = Field(150, description="Render DPI for pages sent to Gemini")
 
 # ---------------------------------------------------------------------------
 # Background job runner
@@ -139,9 +154,10 @@ def _utc_now() -> str:
 # Routers
 # ---------------------------------------------------------------------------
 
-main_router     = APIRouter(prefix="/legal_extraction")
-scraping_router = APIRouter(prefix="/legal_extraction/scraping")
-upload_router   = APIRouter(prefix="/legal_extraction/uploading_google_drive")
+main_router              = APIRouter(prefix="/legal_extraction")
+scraping_router          = APIRouter(prefix="/legal_extraction/scraping")
+upload_router            = APIRouter(prefix="/legal_extraction/uploading_google_drive")
+text_extraction_router   = APIRouter(prefix="/legal_extraction/text_extraction")
 
 # --- Scraping ---
 
@@ -216,6 +232,38 @@ def upload_jobs():
     jobs.sort(key=lambda j: j["created_at"], reverse=True)
     return jobs
 
+# --- Text extraction ---
+
+@text_extraction_router.post("/run", status_code=202)
+def text_extraction_run(req: TextExtractionRunRequest):
+    """Start a text extraction job."""
+    cmd = [
+        sys.executable, TEXT_EXTRACTION_SCRIPT,
+        "--pdfs-dir",           req.pdfs_dir,
+        "--txt-dir",            req.txt_dir,
+        "--min-text-len",       str(req.min_text_len),
+        "--max-image-coverage", str(req.max_image_coverage),
+        "--dpi",                str(req.dpi),
+    ]
+    if req.pdf:
+        cmd += ["--pdf", req.pdf]
+
+    job_id = str(uuid.uuid4())
+    with _jobs_lock:
+        _jobs[job_id] = _make_job(job_id, "text_extraction", req.model_dump())
+
+    threading.Thread(target=_run_job, args=(job_id, cmd), daemon=True).start()
+    return {"job_id": job_id, "status": "queued", "script": "text_extraction"}
+
+
+@text_extraction_router.get("/jobs")
+def text_extraction_jobs():
+    """List text extraction jobs (most recent first)."""
+    with _jobs_lock:
+        jobs = [j for j in _jobs.values() if j["script"] == "text_extraction"]
+    jobs.sort(key=lambda j: j["created_at"], reverse=True)
+    return jobs
+
 # --- Shared ---
 
 @main_router.get("/status/{job_id}")
@@ -232,8 +280,9 @@ def get_status(job_id: str):
 def list_scripts():
     """List all available script keys."""
     return {
-        "scraper_scripts": list(SCRAPER_SCRIPTS.keys()),
-        "upload_scripts":  list(UPLOAD_SCRIPTS.keys()),
+        "scraper_scripts":          list(SCRAPER_SCRIPTS.keys()),
+        "upload_scripts":           list(UPLOAD_SCRIPTS.keys()),
+        "text_extraction_scripts":  ["text_extraction"],
     }
 
 # ---------------------------------------------------------------------------
@@ -242,4 +291,5 @@ def list_scripts():
 
 app.include_router(scraping_router)
 app.include_router(upload_router)
+app.include_router(text_extraction_router)
 app.include_router(main_router)
