@@ -1,0 +1,1952 @@
+{
+  "name": "legal data extraction workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        800,
+        -368
+      ],
+      "id": "03eba0da-153d-4647-99e2-7dd7f278fbee",
+      "name": "Wait",
+      "webhookId": "0b7dda25-9450-4e37-91fb-ccb6a7c92812"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/legal_extraction/scraping/run",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"script\": \"lois_decrets_fr\",\n  \"start_year\": {{ $json.start_year }},\n  \"end_year\": {{ $json.end_year }},\n  \"base_dir\": \"{{ $json.base_dir }}\",\n  \"headless\": {{ $json.headless }},\n  \"retries\": {{ $json.retries }},\n  \"nav_timeout_ms\": {{ $json.nav_timeout_ms }},\n  \"selector_timeout_ms\": {{ $json.selector_timeout_ms }},\n  \"download_timeout_ms\": {{ $json.download_timeout_ms }},\n  \"page_wait_ms\": {{ $json.page_wait_ms }}\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        352,
+        -272
+      ],
+      "id": "7d1ef8f8-523c-41bc-b1e5-6e2ff23f61dd",
+      "name": "run scraping"
+    },
+    {
+      "parameters": {
+        "url": "=http://127.0.0.1:8000/legal_extraction/status/{{ $('run scraping').item.json.job_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1040,
+        -448
+      ],
+      "id": "d925d946-deaf-4e66-ad95-91c1049d1ffc",
+      "name": "see status"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -240
+      ],
+      "id": "fe23b823-a5b6-4062-9350-365d0fefa079",
+      "name": "start"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"start_year\": 2026,\n  \"end_year\": 2026,\n  \"base_dir\": \"outputs/pdfs/Journal_Officiel_Lois_Decrets_Decisions_Avis\",\n  \"headless\": false,\n  \"start_url\": \"http://www.iort.gov.tn/WD120AWP/WD120Awp.exe/CONNECT/SITEIORT\",\n  \"nav_timeout_ms\": 45000,\n  \"selector_timeout_ms\": 15000,\n  \"download_timeout_ms\": 90000,\n  \"page_wait_ms\": 800,\n  \"retries\": 2\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        144,
+        -240
+      ],
+      "id": "870a4971-d206-42dc-9201-13021b9c7029",
+      "name": "input fields",
+      "notesInFlow": true,
+      "notes": "this contains the arg needed for the scraping data"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "done",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e69fc001-5fa5-4d7b-ae4c-29452ccdd3e4"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "done"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ce0ffef3-3e7c-449d-962a-4f319cbae311",
+                    "leftValue": "failed error",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "failed/error"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ada4c640-7b10-40db-97dd-8eb64245c120",
+                    "leftValue": "running queued",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "running/queued"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        -352
+      ],
+      "id": "d3e59ee1-7cb6-44ec-8477-216aa0bde828",
+      "name": "check status",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=❌ *JORT Scraper — job failed*  \nJob ID : {{ $('run scraping').item.json.job_id }} \nStatus : {{ $('see status').item.json.status }} \nError  : {{ $('see status').item.json.error ?? 'n/a' }} \nTime   : {{ $('see status').item.json.finished_at }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1472,
+        -432
+      ],
+      "id": "4b12e4e9-6c45-42c0-b936-f95618af374c",
+      "name": "send error telegram",
+      "webhookId": "77438cac-da97-4190-bf9e-98ce9fcdcde6",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=📢 *JORT Scraper — job started*\n\nJob ID : {{ $('run scraping').item.json.job_id }}\nScript : lois\\_decrets\\_fr\nYears  : {{ $('input fields').item.json.start_year }} → {{ $('input fields').item.json.end_year }}\nHeadless: {{ $('input fields').item.json.headless }}\nRetries : {{ $('input fields').item.json.retries }}\n",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        592,
+        -336
+      ],
+      "id": "da76a1fb-9a45-45ae-8ece-e63fb9ce3f31",
+      "name": "notify job started",
+      "webhookId": "f650ba02-a7c4-4446-bf58-fa9aad31b3ca",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/legal_extraction/uploading_google_drive/run",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"script\": \"upload_gdrive\" }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        176,
+        160
+      ],
+      "id": "1cc2a1d7-10a4-4f7c-b8b0-5a93ba12d96d",
+      "name": "run upload"
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=📢 *JORT Upload — job started*  \n\nJob ID : {{ $('run upload').item.json.job_id }} \nScript : upload\\_gdrive",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        448
+      ],
+      "id": "56480f70-b4f4-47b0-b3e5-2500a80d29d1",
+      "name": "notify upload started",
+      "webhookId": "dca010cc-40a2-4887-b859-b3cf3172e25f",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        272
+      ],
+      "id": "4bc1322d-1b5e-475d-bed3-009d9e85be6f",
+      "name": "Wait Upload",
+      "webhookId": "97e3139d-481a-4b93-bb35-7dd4eb1b7a6e"
+    },
+    {
+      "parameters": {
+        "url": "=http://127.0.0.1:8000/legal_extraction/status/{{ $('run upload').item.json.job_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        656,
+        208
+      ],
+      "id": "ee4b2c6a-1497-40e2-b369-9277810fda3c",
+      "name": "see upload status"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "done",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e69fc001-5fa5-4d7b-ae4c-29452ccdd3e4"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "done"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ce0ffef3-3e7c-449d-962a-4f319cbae311",
+                    "leftValue": "failed error",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "failed/error"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ada4c640-7b10-40db-97dd-8eb64245c120",
+                    "leftValue": "running queued",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "running/queued"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        864,
+        224
+      ],
+      "id": "55729d92-4fc2-4b3d-be48-0d20631ad5b5",
+      "name": "check upload status",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=*JORT Upload — {{ $('see upload status').item.json.status == 'done' ? 'completed ✅' : 'failed ❌' }}*\n\nJob ID  : {{ $('run upload').item.json.job_id }}\nStatus  : {{ $('see upload status').item.json.status }}\nError   : {{ $('see upload status').item.json.error ?? 'n/a' }}\nFinished: {{ $('see upload status').item.json.finished_at }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1184,
+        368
+      ],
+      "id": "fc802f70-4111-443b-aff7-19013ea1c50c",
+      "name": "notify upload done",
+      "webhookId": "dca010cc-40a2-4887-b859-b3cf3172e25f",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=✅ *JORT Scraper — download done *\n\nJob ID    : {{ $('run scraping').item.json.job_id }}\nScript    : lois\\_decrets\\_fr\nYears     : {{ $('input fields').item.json.start_year }} → {{ $('input fields').item.json.end_year }}\nFinished  : {{ $('see status').item.json.finished_at }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1552,
+        -192
+      ],
+      "id": "7b9a8ae0-9cc9-4e16-b927-7cdf4f34982f",
+      "name": "notify download done",
+      "webhookId": "77438cac-da97-4190-bf9e-98ce9fcdcde6",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "30c52831-9a19-42ad-b4b6-6c0f75a6b2a0",
+              "leftValue": "={{ $('see upload status').item.json.status }}",
+              "rightValue": "done",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1504,
+        464
+      ],
+      "id": "1e36b4bd-8c12-455e-b4de-09a3b2c8f7cf",
+      "name": "upload succeeded?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/legal_extraction/text_extraction/run",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n    \"pdf\":\"outputs/pdfs/Journal_Officiel_Lois_Decrets_Decisions_Avis/2026/JORT_002_2026-01-06.pdf\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        64,
+        880
+      ],
+      "id": "7e77e594-b076-4334-a653-9ccd2d5406e1",
+      "name": "run text extraction"
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=📢 *JORT Text Extraction — job started*\n\nJob ID : {{ $('run text extraction').item.json.job_id }}\nScript : text\\_extraction",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        288,
+        928
+      ],
+      "id": "db87a0a7-1311-4dda-a8c4-c6384745ac9a",
+      "name": "notify extraction started",
+      "webhookId": "dca010cc-40a2-4887-b859-b3cf3172e25f",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        512,
+        960
+      ],
+      "id": "9a279ca7-50ba-4f73-9967-f495f3d81446",
+      "name": "Wait Extraction",
+      "webhookId": "faea34b9-fe09-43e4-987b-1227e56f7336"
+    },
+    {
+      "parameters": {
+        "url": "=http://127.0.0.1:8000/legal_extraction/status/{{ $('run text extraction').item.json.job_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        704,
+        880
+      ],
+      "id": "7a6877a1-07df-445a-989a-ddfc3d98a2fa",
+      "name": "see extraction status"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "done",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e69fc001-5fa5-4d7b-ae4c-29452ccdd3e4"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "done"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ce0ffef3-3e7c-449d-962a-4f319cbae311",
+                    "leftValue": "failed error",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "failed/error"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ada4c640-7b10-40db-97dd-8eb64245c120",
+                    "leftValue": "running queued",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "running/queued"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        944,
+        976
+      ],
+      "id": "cc40c227-2307-40b6-ad28-ed6ac53eb94b",
+      "name": "check extraction status",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=*JORT Text Extraction — {{ $('see extraction status').item.json.status == 'done' ? 'completed ✅' : 'failed ❌' }}*\n\nJob ID    : {{ $('run text extraction').item.json.job_id }}\nStatus    : {{ $('see extraction status').item.json.status }}\nError     : {{ $('see extraction status').item.json.error ?? 'n/a' }}\nFinished  : {{ $('see extraction status').item.json.finished_at }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1184,
+        848
+      ],
+      "id": "3dcc7876-3f02-4cce-af15-50cd72052560",
+      "name": "notify extraction done",
+      "webhookId": "dca010cc-40a2-4887-b859-b3cf3172e25f",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "# Scraping\n",
+        "height": 592,
+        "width": 1808
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -32,
+        -592
+      ],
+      "typeVersion": 1,
+      "id": "66469423-0330-480e-97c2-01e8b2f63a4f",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "# Uploding to google drive\n\n",
+        "height": 576,
+        "width": 1808,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -32,
+        64
+      ],
+      "typeVersion": 1,
+      "id": "3f488fcd-37f1-4a81-9f00-372e92c7239c",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "# Text Extraction",
+        "height": 592,
+        "width": 1808,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -32,
+        688
+      ],
+      "typeVersion": 1,
+      "id": "7f32b9bb-4598-491d-a9ce-1b5150e0ffd2",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6bf3adae-0e69-4b0b-83a2-3e804ca3a174",
+              "leftValue": "={{ $('see extraction status').item.json.status }}",
+              "rightValue": "done",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1376,
+        1104
+      ],
+      "id": "86dad1bb-6e2f-44c3-99fc-aa9befd3e155",
+      "name": "extraction succeeded?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/legal_extraction/article_extraction/run",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n\"txt\":\"outputs/txt/Journal_Officiel_Lois_Decrets_Decisions_Avis/2026/JORT_002_2026-01-06.txt\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        80,
+        1648
+      ],
+      "id": "132c8fd6-7456-4726-a361-8342d489ea0b",
+      "name": "run article extraction"
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=📢 *JORT Article Extraction — job started*\n\nJob ID : {{ $('run article extraction').item.json.job_id }}\nScript : article\\_extraction",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        304,
+        1648
+      ],
+      "id": "e8085590-424d-42f5-94f4-7cfdf6ce7af8",
+      "name": "notify article extraction started",
+      "webhookId": "dca010cc-40a2-4887-b859-b3cf3172e25f",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 20
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        528,
+        1616
+      ],
+      "id": "4d9cff7f-1fa2-4800-87df-f0aba0978181",
+      "name": "Wait Article Extraction",
+      "webhookId": "f542ac54-795f-48d0-8292-2bf5fa8edeee"
+    },
+    {
+      "parameters": {
+        "url": "=http://127.0.0.1:8000/legal_extraction/status/{{ $('run article extraction').item.json.job_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        704,
+        1536
+      ],
+      "id": "b6eb8f9e-6633-4ecb-a864-ff039caaf02e",
+      "name": "see article extraction status"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "done",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e69fc001-5fa5-4d7b-ae4c-29452ccdd3e4"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "done"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ce0ffef3-3e7c-449d-962a-4f319cbae311",
+                    "leftValue": "failed error",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "failed/error"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ada4c640-7b10-40db-97dd-8eb64245c120",
+                    "leftValue": "running queued",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "running/queued"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        928,
+        1584
+      ],
+      "id": "cc4d424f-3929-4ac7-b494-c811f6a15326",
+      "name": "check article extraction status",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=*JORT Article Extraction — {{ $('see article extraction status').item.json.status == 'done' ? 'completed ✅' : 'failed ❌' }}*\n\nJob ID    : {{ $('run article extraction').item.json.job_id }}\nStatus    : {{ $('see article extraction status').item.json.status }}\nError     : {{ $('see article extraction status').item.json.error ?? 'n/a' }}\nFinished  : {{ $('see article extraction status').item.json.finished_at }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1296,
+        1616
+      ],
+      "id": "de658acf-2087-4e0d-b4b0-63078610e8f3",
+      "name": "notify article extraction done",
+      "webhookId": "dca010cc-40a2-4887-b859-b3cf3172e25f",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "# Article Extraction\n",
+        "height": 592,
+        "width": 1808
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -32,
+        1344
+      ],
+      "typeVersion": 1,
+      "id": "a6fa21b7-f264-45cc-999a-d351659a0c29",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "38d14080-5db1-45a1-a142-55ae37d047a6",
+              "leftValue": "={{ $('see article extraction status').item.json.status }}",
+              "rightValue": "done",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1552,
+        1744
+      ],
+      "id": "e3fd46bb-0765-4ad5-8d8e-32cba47b24de",
+      "name": "article extraction succeeded?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/legal_extraction/embedding/run",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n\"json\":\"outputs/json/Journal_Officiel_Lois_Decrets_Decisions_Avis/2026/JORT_002_2026-01-06.json\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        128,
+        2288
+      ],
+      "id": "c01bf403-1dff-422b-a385-39df0171f0bf",
+      "name": "run embedding"
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=📢 *JORT Embedding — job started*\n\nJob ID : {{ $('run embedding').item.json.job_id }}\nScript : embedding\nModel  : BAAI/bge\\-m3",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        320,
+        2288
+      ],
+      "id": "edd8a021-d573-4af2-9e90-6b67338be035",
+      "name": "notify embedding started",
+      "webhookId": "dca010cc-40a2-4887-b859-b3cf3172e25f",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        528,
+        2320
+      ],
+      "id": "ba9dbfd2-d86e-4a27-9c7e-1ac4f6268350",
+      "name": "Wait Embedding",
+      "webhookId": "00af59fb-b76f-42be-bb00-bc48b4889cee"
+    },
+    {
+      "parameters": {
+        "url": "=http://127.0.0.1:8000/legal_extraction/status/{{ $('run embedding').item.json.job_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        672,
+        2256
+      ],
+      "id": "a40bb2da-310e-4cb3-9fef-69c67f2b046a",
+      "name": "see embedding status"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "done",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e69fc001-5fa5-4d7b-ae4c-29452ccdd3e4"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "done"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ce0ffef3-3e7c-449d-962a-4f319cbae311",
+                    "leftValue": "failed error",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "failed/error"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ada4c640-7b10-40db-97dd-8eb64245c120",
+                    "leftValue": "running queued",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "running/queued"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        2304
+      ],
+      "id": "47ad8117-f1ea-4b87-88e0-29ae76cf4947",
+      "name": "check article extraction status1",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=*JORT Embedding — {{ $('see embedding status').item.json.status == 'done' ? 'completed ✅' : 'failed ❌' }}*\n\nJob ID    : {{ $('run embedding').item.json.job_id }}\nStatus    : {{ $('see embedding status').item.json.status }}\nError     : {{ $('see embedding status').item.json.error ?? 'n/a' }}\nFinished  : {{ $('see embedding status').item.json.finished_at }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        2256
+      ],
+      "id": "1b33180c-60ad-451c-9e56-abb4cad813a3",
+      "name": "notify article extraction done1",
+      "webhookId": "dca010cc-40a2-4887-b859-b3cf3172e25f",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "# Embedding\n",
+        "height": 592,
+        "width": 1808,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -32,
+        2000
+      ],
+      "typeVersion": 1,
+      "id": "58959efd-406e-4e3a-bd61-348f6fe93354",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "329935e5-1cee-4b54-8556-06abe39a4e82",
+              "leftValue": "={{ $('see embedding status').item.json.status }}",
+              "rightValue": "done",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1520,
+        2400
+      ],
+      "id": "c1281928-043a-4e4c-9fd8-93b8750d47ce",
+      "name": "embedding succeeded?"
+    },
+    {
+      "parameters": {
+        "content": "# Vector Database Storage",
+        "height": 528,
+        "width": 1808
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -32,
+        2672
+      ],
+      "typeVersion": 1,
+      "id": "f514af41-8cf9-4b39-b7f1-55ea2d4ff4a9",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/legal_extraction/vector_storage/run",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n\"embeddings\":\"outputs/embeddings/Journal_Officiel_Lois_Decrets_Decisions_Avis/2026/JORT_002_2026-01-06.embeddings.json\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        160,
+        2928
+      ],
+      "id": "9268fb8b-1bc1-431c-ab72-54f8386fb40f",
+      "name": "run vector storage"
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=📢 *JORT Vector Storage — job started*\n\nJob ID     : {{ $('run vector storage').item.json.job_id }}\nScript     : vector\\_storage\nCollection : jort\\_articles",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        384,
+        2928
+      ],
+      "id": "bdf092e2-ae71-4d89-91e2-cbe9bf5262e9",
+      "name": "notify vector storage started",
+      "webhookId": "dca010cc-40a2-4887-b859-b3cf3172e25f",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        608,
+        2896
+      ],
+      "id": "4e197803-f660-42af-907c-c5e5f3a13218",
+      "name": "Wait Vector Storage",
+      "webhookId": "f542ac54-795f-48d0-8292-2bf5fa8edeee"
+    },
+    {
+      "parameters": {
+        "url": "=http://127.0.0.1:8000/legal_extraction/status/{{ $('run vector storage').item.json.job_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        784,
+        2816
+      ],
+      "id": "cbb1d632-6508-4da9-acd7-74c616471ecd",
+      "name": "see vector storage status"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "done",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e69fc001-5fa5-4d7b-ae4c-29452ccdd3e4"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "done"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ce0ffef3-3e7c-449d-962a-4f319cbae311",
+                    "leftValue": "failed error",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "failed/error"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ada4c640-7b10-40db-97dd-8eb64245c120",
+                    "leftValue": "running queued",
+                    "rightValue": "={{ $json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "running/queued"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1008,
+        2864
+      ],
+      "id": "5f11a033-013d-44ff-93eb-218f7f0a4459",
+      "name": "check vector storage status",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "chatId": "6991548258",
+        "text": "=*JORT Vector Storage — {{ $('see vector storage status').item.json.status == 'done' ? 'completed ✅' : 'failed ❌' }}*\n\nJob ID    : {{ $('run vector storage').item.json.job_id }}\nStatus    : {{ $('see vector storage status').item.json.status }}\nError     : {{ $('see vector storage status').item.json.error ?? 'n/a' }}\nFinished  : {{ $('see vector storage status').item.json.finished_at }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1376,
+        2896
+      ],
+      "id": "801960f2-eaf2-497f-a112-548d4613c6ec",
+      "name": "notify vector storage done",
+      "webhookId": "dca010cc-40a2-4887-b859-b3cf3172e25f",
+      "retryOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "qotPxtyBeIJbGru8",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "see status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "run scraping": {
+      "main": [
+        [
+          {
+            "node": "notify job started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "see status": {
+      "main": [
+        [
+          {
+            "node": "check status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "start": {
+      "main": [
+        [
+          {
+            "node": "input fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "input fields": {
+      "main": [
+        [
+          {
+            "node": "run scraping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check status": {
+      "main": [
+        [
+          {
+            "node": "notify download done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "send error telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notify job started": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send error telegram": {
+      "main": [
+        []
+      ]
+    },
+    "run upload": {
+      "main": [
+        [
+          {
+            "node": "notify upload started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notify upload started": {
+      "main": [
+        [
+          {
+            "node": "Wait Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Upload": {
+      "main": [
+        [
+          {
+            "node": "see upload status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "see upload status": {
+      "main": [
+        [
+          {
+            "node": "check upload status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check upload status": {
+      "main": [
+        [
+          {
+            "node": "notify upload done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "notify upload done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notify download done": {
+      "main": [
+        [
+          {
+            "node": "run upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notify upload done": {
+      "main": [
+        [
+          {
+            "node": "upload succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "upload succeeded?": {
+      "main": [
+        [
+          {
+            "node": "run text extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "run text extraction": {
+      "main": [
+        [
+          {
+            "node": "notify extraction started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notify extraction started": {
+      "main": [
+        [
+          {
+            "node": "Wait Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Extraction": {
+      "main": [
+        [
+          {
+            "node": "see extraction status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "see extraction status": {
+      "main": [
+        [
+          {
+            "node": "check extraction status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check extraction status": {
+      "main": [
+        [
+          {
+            "node": "notify extraction done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "notify extraction done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notify extraction done": {
+      "main": [
+        [
+          {
+            "node": "extraction succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "extraction succeeded?": {
+      "main": [
+        [
+          {
+            "node": "run article extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "run article extraction": {
+      "main": [
+        [
+          {
+            "node": "notify article extraction started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notify article extraction started": {
+      "main": [
+        [
+          {
+            "node": "Wait Article Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Article Extraction": {
+      "main": [
+        [
+          {
+            "node": "see article extraction status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "see article extraction status": {
+      "main": [
+        [
+          {
+            "node": "check article extraction status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check article extraction status": {
+      "main": [
+        [
+          {
+            "node": "notify article extraction done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "notify article extraction done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait Article Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notify article extraction done": {
+      "main": [
+        [
+          {
+            "node": "article extraction succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "article extraction succeeded?": {
+      "main": [
+        [
+          {
+            "node": "run embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "run embedding": {
+      "main": [
+        [
+          {
+            "node": "notify embedding started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notify embedding started": {
+      "main": [
+        [
+          {
+            "node": "Wait Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Embedding": {
+      "main": [
+        [
+          {
+            "node": "see embedding status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "see embedding status": {
+      "main": [
+        [
+          {
+            "node": "check article extraction status1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check article extraction status1": {
+      "main": [
+        [
+          {
+            "node": "notify article extraction done1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "notify article extraction done1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notify article extraction done1": {
+      "main": [
+        [
+          {
+            "node": "embedding succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "embedding succeeded?": {
+      "main": [
+        [
+          {
+            "node": "run vector storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "run vector storage": {
+      "main": [
+        [
+          {
+            "node": "notify vector storage started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notify vector storage started": {
+      "main": [
+        [
+          {
+            "node": "Wait Vector Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Vector Storage": {
+      "main": [
+        [
+          {
+            "node": "see vector storage status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "see vector storage status": {
+      "main": [
+        [
+          {
+            "node": "check vector storage status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check vector storage status": {
+      "main": [
+        [
+          {
+            "node": "notify vector storage done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "notify vector storage done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait Vector Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c3095d17-8d9d-42ed-8d67-0b61627fe8c8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ac34494e21963ed8657638c384e9fae082ce69a51126ade18fd3313265ec1198"
+  },
+  "id": "NzQSx1MM2g7lVlP5",
+  "tags": []
+}
