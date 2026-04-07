@@ -1,7 +1,7 @@
 # n8n Workflow — Node Descriptions
 
 This file documents each node in the JORT scraping + Google Drive upload + text extraction workflow.
-to get the full workflow import this file to your n8n[legal_data_extraction_workflow.json](legal_data_extraction_workflow.json)
+to get the full workflow import this file to your n8n [legal_data_extraction_workflow.json](legal_data_extraction_workflow.json)
 
 ---
 
