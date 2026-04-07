@@ -68,7 +68,7 @@ SCRAPER_SCRIPTS: dict[str, str] = {
 }
 
 UPLOAD_SCRIPTS: dict[str, list[str]] = {
-    "upload_gdrive": ["rclone", "copy", "pdfs/", "gdrive:JORT/", "--progress"],
+    "upload_gdrive": ["rclone", "copy", "outputs/pdfs/", "gdrive:JORT/", "--progress"],
 }
 
 TEXT_EXTRACTION_SCRIPT    = "text_extraction/extract_text.py"
@@ -109,8 +109,8 @@ class UploadRunRequest(BaseModel):
 
 class TextExtractionRunRequest(BaseModel):
     pdf: str | None       = Field(None, description="Single PDF path for testing (relative to repo root)")
-    pdfs_dir: str         = Field("pdfs", description="Root directory of downloaded PDFs")
-    txt_dir: str          = Field("txt", description="Root directory for output .txt files")
+    pdfs_dir: str         = Field("outputs/pdfs", description="Root directory of downloaded PDFs")
+    txt_dir: str          = Field("outputs/txt", description="Root directory for output .txt files")
     min_text_len: int     = Field(50, description="Chars threshold below which a page goes to Gemini")
     max_image_coverage: float = Field(0.15, description="Image area fraction above which a page goes to Gemini")
     dpi: int              = Field(150, description="Render DPI for pages sent to Gemini")
@@ -118,21 +118,21 @@ class TextExtractionRunRequest(BaseModel):
 
 class ArticleExtractionRunRequest(BaseModel):
     txt: str | None   = Field(None, description="Single .txt path for testing (relative to repo root)")
-    txt_dir: str      = Field("txt",  description="Root directory of input .txt files")
-    json_dir: str     = Field("json", description="Root directory for output .json files")
+    txt_dir: str      = Field("outputs/txt",  description="Root directory of input .txt files")
+    json_dir: str     = Field("outputs/json", description="Root directory for output .json files")
     delay: int        = Field(5000,   description="Delay in ms between article API calls")
 
 
 class EmbeddingRunRequest(BaseModel):
     json: str | None        = Field(None, description="Single .json path for testing (relative to repo root)")
-    json_dir: str           = Field("json",       description="Root directory of input .json files")
-    embeddings_dir: str     = Field("embeddings", description="Root directory for output .embeddings.json files")
+    json_dir: str           = Field("outputs/json",       description="Root directory of input .json files")
+    embeddings_dir: str     = Field("outputs/embeddings", description="Root directory for output .embeddings.json files")
     batch_size: int         = Field(32,            description="Number of articles per BGE-M3 batch")
 
 
 class VectorStorageRunRequest(BaseModel):
     embeddings: str | None  = Field(None, description="Single .embeddings.json path for testing (relative to repo root)")
-    embeddings_dir: str     = Field("embeddings",        description="Root directory of input .embeddings.json files")
+    embeddings_dir: str     = Field("outputs/embeddings", description="Root directory of input .embeddings.json files")
     qdrant_url: str         = Field("http://localhost:6333", description="Qdrant base URL")
     collection: str         = Field("jort_articles",     description="Qdrant collection name")
     batch_size: int         = Field(100,                  description="Points per upsert call")

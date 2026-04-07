@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timezone
 
 DEFAULT_START_URL = "http://www.iort.gov.tn/WD120AWP/WD120Awp.exe/CONNECT/SITEIORT"
-CHECKPOINT_DIR = "checkpoints"
+CHECKPOINT_DIR = "outputs/checkpoints"
 
 
 def utc_now_iso():

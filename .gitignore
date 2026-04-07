@@ -14,6 +14,9 @@ credentials.json
 checkpoints
 pdfs
 txt
+json
+embeddings
+outputs
 
 #claude md files
 claude context

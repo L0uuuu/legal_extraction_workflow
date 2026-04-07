@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 # ---------------------------------------------------------------------------
 
 MODEL_NAME       = "BAAI/bge-m3"
-CHECKPOINT_PATH  = Path("checkpoints/embedding.checkpoint.json")
+CHECKPOINT_PATH  = Path("outputs/checkpoints/embedding.checkpoint.json")
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -34,10 +34,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Phase 6 — embed JORT articles with BAAI/bge-m3")
     p.add_argument("--json",          dest="single_json", default=None,
                    help="Single .json file path for testing (relative to repo root)")
-    p.add_argument("--json-dir",      default="json",
-                   help="Root directory of input .json files (default: json)")
-    p.add_argument("--embeddings-dir", default="embeddings",
-                   help="Root directory for output .embeddings.json files (default: embeddings)")
+    p.add_argument("--json-dir",      default="outputs/json",
+                   help="Root directory of input .json files (default: outputs/json)")
+    p.add_argument("--embeddings-dir", default="outputs/embeddings",
+                   help="Root directory for output .embeddings.json files (default: outputs/embeddings)")
     p.add_argument("--batch-size",    type=int, default=32,
                    help="Number of articles to embed per BGE-M3 batch (default: 32)")
     return p

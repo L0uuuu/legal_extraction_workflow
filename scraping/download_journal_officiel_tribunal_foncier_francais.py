@@ -25,7 +25,7 @@ from scraper_common import (
     build_run_summary,
 )
 
-DEFAULT_BASE_DIR = "pdfs/Journal_Officiel_Tribunal_Foncier"
+DEFAULT_BASE_DIR = "outputs/pdfs/Journal_Officiel_Tribunal_Foncier"
 SCRIPT_NAME = "download_journal_officiel_tribunal_foncier_francais.py"
 
 

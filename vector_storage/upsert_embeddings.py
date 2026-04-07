@@ -33,7 +33,7 @@ from qdrant_client.models import (
 COLLECTION_NAME  = "jort_articles"
 VECTOR_SIZE      = 1024          # BAAI/bge-m3 output dimension
 QDRANT_URL       = "http://localhost:6333"
-CHECKPOINT_PATH  = Path("checkpoints/vector_storage.checkpoint.json")
+CHECKPOINT_PATH  = Path("outputs/checkpoints/vector_storage.checkpoint.json")
 BATCH_SIZE       = 100           # points per upsert call
 
 # Fields stored as filterable payload in Qdrant
@@ -57,7 +57,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Phase 7 — upsert JORT embeddings into Qdrant")
     p.add_argument("--embeddings",      dest="single_file", default=None,
                    help="Single .embeddings.json file for testing (relative to repo root)")
-    p.add_argument("--embeddings-dir",  default="embeddings",
+    p.add_argument("--embeddings-dir",  default="outputs/embeddings",
                    help="Root directory of .embeddings.json files (default: embeddings)")
     p.add_argument("--qdrant-url",      default=QDRANT_URL,
                    help=f"Qdrant base URL (default: {QDRANT_URL})")

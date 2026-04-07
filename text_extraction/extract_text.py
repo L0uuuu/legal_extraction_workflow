@@ -41,7 +41,7 @@ load_dotenv()  # reads .env from cwd (repo root)
 # ---------------------------------------------------------------------------
 
 SCRIPT_NAME          = "extract_text.py"
-CHECKPOINT_FILE      = "checkpoints/text_extraction.checkpoint.json"
+CHECKPOINT_FILE      = "outputs/checkpoints/text_extraction.checkpoint.json"
 MIN_TEXT_LEN_DEFAULT = 50   # chars; pages below this threshold are treated as scanned
 DPI_DEFAULT          = 150  # render DPI for scanned pages sent to Gemini
 
@@ -52,7 +52,6 @@ DPI_DEFAULT          = 150  # render DPI for scanned pages sent to Gemini
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
 
 def normalize_path(p) -> str:
     return str(p).replace("\\", "/")
@@ -71,8 +70,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to a single PDF to extract (test mode). Omit to process all pending PDFs.",
     )
-    p.add_argument("--pdfs-dir",     default="pdfs", help="Root directory of downloaded PDFs (batch mode)")
-    p.add_argument("--txt-dir",      default="txt",  help="Root directory for output .txt files")
+    p.add_argument("--pdfs-dir",     default="outputs/pdfs", help="Root directory of downloaded PDFs (batch mode)")
+    p.add_argument("--txt-dir",      default="outputs/txt",  help="Root directory for output .txt files")
     p.add_argument(
         "--project-id",
         default=os.getenv("PROJECT_ID"),
@@ -238,7 +237,7 @@ def single_pdf_entry(pdf_path: str, txt_dir: str) -> dict:
     # Try to detect standard layout: .../<section>/<year>/<filename>.pdf
     section, year = "test", "test"
     for i, part in enumerate(parts):
-        if part.startswith("pdfs") and i + 3 <= len(parts):
+        if part == "pdfs" and i + 3 <= len(parts):
             section = parts[i + 1] if i + 1 < len(parts) else "test"
             year    = parts[i + 2] if i + 2 < len(parts) else "test"
             break

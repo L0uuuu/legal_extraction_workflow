@@ -40,7 +40,7 @@ MAX_OUTPUT_TOKENS       = int(os.getenv("OPENAI_OUTPUT_TOKENS", "32000"))
 CHARS_PER_TOKEN  = 4
 MAX_INPUT_CHARS  = 100000 * CHARS_PER_TOKEN   # ~100k tokens
 
-CHECKPOINT_PATH  = Path("checkpoints/article_extraction.checkpoint.json")
+CHECKPOINT_PATH  = Path("outputs/checkpoints/article_extraction.checkpoint.json")
 
 # ---------------------------------------------------------------------------
 # Azure OpenAI client (lazy init)
@@ -660,8 +660,8 @@ def _single_txt_entry(txt_path: Path, txt_dir: Path, json_dir: Path) -> tuple[Pa
 def main() -> None:
     parser = argparse.ArgumentParser(description="Phase 4 — Article Extraction")
     parser.add_argument("--txt",      default=None,  help="Single .txt file path (test mode)")
-    parser.add_argument("--txt-dir",  default="txt",  help="Root of .txt files (batch mode)")
-    parser.add_argument("--json-dir", default="json", help="Root for output .json files")
+    parser.add_argument("--txt-dir",  default="outputs/txt",  help="Root of .txt files (batch mode)")
+    parser.add_argument("--json-dir", default="outputs/json", help="Root for output .json files")
     parser.add_argument("--delay",    type=int, default=5000, help="Delay between articles in ms")
     args = parser.parse_args()
 
