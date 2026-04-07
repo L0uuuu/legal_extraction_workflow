@@ -1,6 +1,7 @@
 # n8n Workflow — Node Descriptions
 
 This file documents each node in the JORT scraping + Google Drive upload + text extraction workflow.
+to get the full workflow import this file to your n8n [legal data extraction workflow.json](legal data extraction workflow.json)
 
 ---
 
@@ -22,20 +23,21 @@ No configuration required. Click "Execute Workflow" in the n8n UI to fire it.
 
 **Output fields:**
 
-| Field | Value | Description |
-|-------|-------|-------------|
-| `start_year` | `2026` | First year to process (inclusive) |
-| `end_year` | `2026` | Last year to process (inclusive) |
-| `base_dir` | `pdfs/Journal_Officiel_Lois_Decrets_Decisions_Avis` | Local folder where PDFs are stored |
-| `headless` | `false` | Whether the scraper browser runs headless |
-| `start_url` | `http://www.iort.gov.tn/WD120AWP/WD120Awp.exe/CONNECT/SITEIORT` | IORT website entry point |
-| `nav_timeout_ms` | `45000` | Navigation timeout in milliseconds |
-| `selector_timeout_ms` | `15000` | Selector wait timeout in milliseconds |
-| `download_timeout_ms` | `90000` | Per-file download timeout in milliseconds |
-| `page_wait_ms` | `800` | Wait after UI interactions in milliseconds |
-| `retries` | `2` | Retry attempts on transient failures |
+| Field                 | Value                                                           | Description                                |
+| --------------------- | --------------------------------------------------------------- | ------------------------------------------ |
+| `start_year`          | `2026`                                                          | First year to process (inclusive)          |
+| `end_year`            | `2026`                                                          | Last year to process (inclusive)           |
+| `base_dir`            | `pdfs/Journal_Officiel_Lois_Decrets_Decisions_Avis`             | Local folder where PDFs are stored         |
+| `headless`            | `false`                                                         | Whether the scraper browser runs headless  |
+| `start_url`           | `http://www.iort.gov.tn/WD120AWP/WD120Awp.exe/CONNECT/SITEIORT` | IORT website entry point                   |
+| `nav_timeout_ms`      | `45000`                                                         | Navigation timeout in milliseconds         |
+| `selector_timeout_ms` | `15000`                                                         | Selector wait timeout in milliseconds      |
+| `download_timeout_ms` | `90000`                                                         | Per-file download timeout in milliseconds  |
+| `page_wait_ms`        | `800`                                                           | Wait after UI interactions in milliseconds |
+| `retries`             | `2`                                                             | Retry attempts on transient failures       |
 
 **Raw JSON:**
+
 ```json
 {
   "start_year": 2026,
@@ -61,13 +63,14 @@ No configuration required. Click "Execute Workflow" in the n8n UI to fire it.
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Method | `POST` |
-| URL | `http://127.0.0.1:8000/legal_extraction/scraping/run` |
-| Body Content Type | `JSON` |
+| Field             | Value                                                 |
+| ----------------- | ----------------------------------------------------- |
+| Method            | `POST`                                                |
+| URL               | `http://127.0.0.1:8000/legal_extraction/scraping/run` |
+| Body Content Type | `JSON`                                                |
 
 **Body (Expression):**
+
 ```json
 {
   "script": "lois_decrets_fr",
@@ -96,15 +99,16 @@ No configuration required. Click "Execute Workflow" in the n8n UI to fire it.
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Text | see below |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Text       | see below             |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Scraper — job started*
 
@@ -116,6 +120,7 @@ Retries : {{ $('input fields').item.json.retries }}
 ```
 
 **Connections:**
+
 - output → Node 5 (Wait)
 
 ---
@@ -128,13 +133,14 @@ Retries : {{ $('input fields').item.json.retries }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resume | `After time interval` |
-| Wait Amount | `10` |
-| Wait Unit | `Seconds` |
+| Field       | Value                 |
+| ----------- | --------------------- |
+| Resume      | `After time interval` |
+| Wait Amount | `10`                  |
+| Wait Unit   | `Seconds`             |
 
 **Connections:**
+
 - output → Node 6 (Get Job Status)
 
 ---
@@ -147,10 +153,10 @@ Retries : {{ $('input fields').item.json.retries }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Method | `GET` |
-| URL | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run scraping').item.json.job_id }}` |
+| Field  | Value                                                                                    |
+| ------ | ---------------------------------------------------------------------------------------- |
+| Method | `GET`                                                                                    |
+| URL    | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run scraping').item.json.job_id }}` |
 
 **Output:** `{ "job_id": "...", "status": "running" | "done" | "failed" | "error", ... }`
 
@@ -164,13 +170,14 @@ Retries : {{ $('input fields').item.json.retries }}
 
 **Configuration — Rules mode with expression conditions:**
 
-| Output name | Condition |
-|-------------|-----------|
-| `done` | `done` **is equal to** `{{ $json.status }}` |
-| `failed/error` | `failed` `error` **contains** `{{ $json.status }}` |
+| Output name      | Condition                                            |
+| ---------------- | ---------------------------------------------------- |
+| `done`           | `done` **is equal to** `{{ $json.status }}`          |
+| `failed/error`   | `failed` `error` **contains** `{{ $json.status }}`   |
 | `running/queued` | `running` `queued` **contains** `{{ $json.status }}` |
 
 **Connections:**
+
 - `done` → Node 9 (Telegram Download Done)
 - `failed/error` → Node 8 (Telegram Error Notification)
 - `running/queued` → Node 5 (Wait) ← loop back
@@ -186,6 +193,7 @@ Retries : {{ $('input fields').item.json.retries }}
 **Credential:** Telegram Bot API (configure once in n8n credentials)
 
 **Setup (one-time):**
+
 1. Open Telegram and search for `@BotFather`
 2. Send `/newbot`, follow the steps, copy the **Bot Token**
 3. Start a chat with your bot, then open `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates` to find your **Chat ID**
@@ -193,15 +201,16 @@ Retries : {{ $('input fields').item.json.retries }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Text | see below |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Text       | see below             |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Scraper — job failed*
 
@@ -212,6 +221,7 @@ Time   : {{ $('see status').item.json.finished_at }}
 ```
 
 **Connections:**
+
 - output → no connection (workflow stops after notification)
 
 ---
@@ -226,15 +236,16 @@ Time   : {{ $('see status').item.json.finished_at }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Text | see below |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Text       | see below             |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Scraper — download done ✅*
 
@@ -245,6 +256,7 @@ Finished  : {{ $('see status').item.json.finished_at }}
 ```
 
 **Connections:**
+
 - output → Node 10 (Start Upload Job)
 
 ---
@@ -257,13 +269,14 @@ Finished  : {{ $('see status').item.json.finished_at }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Method | `POST` |
-| URL | `http://127.0.0.1:8000/legal_extraction/uploading_google_drive/run` |
-| Body Content Type | `JSON` |
+| Field             | Value                                                               |
+| ----------------- | ------------------------------------------------------------------- |
+| Method            | `POST`                                                              |
+| URL               | `http://127.0.0.1:8000/legal_extraction/uploading_google_drive/run` |
+| Body Content Type | `JSON`                                                              |
 
 **Body:**
+
 ```json
 { "script": "upload_gdrive" }
 ```
@@ -280,14 +293,15 @@ Finished  : {{ $('see status').item.json.finished_at }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Upload — job started*
 
@@ -296,6 +310,7 @@ Script : upload\_gdrive
 ```
 
 **Connections:**
+
 - output → Node 12 (Wait Upload)
 
 ---
@@ -308,13 +323,14 @@ Script : upload\_gdrive
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resume | `After time interval` |
-| Wait Amount | `15` |
-| Wait Unit | `Seconds` |
+| Field       | Value                 |
+| ----------- | --------------------- |
+| Resume      | `After time interval` |
+| Wait Amount | `15`                  |
+| Wait Unit   | `Seconds`             |
 
 **Connections:**
+
 - output → Node 13 (Get Upload Status)
 
 ---
@@ -327,10 +343,10 @@ Script : upload\_gdrive
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Method | `GET` |
-| URL | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run upload').item.json.job_id }}` |
+| Field  | Value                                                                                  |
+| ------ | -------------------------------------------------------------------------------------- |
+| Method | `GET`                                                                                  |
+| URL    | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run upload').item.json.job_id }}` |
 
 **Output:** `{ "job_id": "...", "status": "running" | "done" | "failed" | "error", ... }`
 
@@ -344,13 +360,14 @@ Script : upload\_gdrive
 
 **Configuration — Rules mode with expression conditions:**
 
-| Output name | Condition |
-|-------------|-----------|
-| `done` | `done` **is equal to** `{{ $json.status }}` |
-| `failed/error` | `failed` `error` **contains** `{{ $json.status }}` |
+| Output name      | Condition                                            |
+| ---------------- | ---------------------------------------------------- |
+| `done`           | `done` **is equal to** `{{ $json.status }}`          |
+| `failed/error`   | `failed` `error` **contains** `{{ $json.status }}`   |
 | `running/queued` | `running` `queued` **contains** `{{ $json.status }}` |
 
 **Connections:**
+
 - `done` → Node 15 (Telegram Upload Done)
 - `failed/error` → Node 15 (Telegram Upload Done)
 - `running/queued` → Node 12 (Wait Upload) ← loop back
@@ -365,14 +382,15 @@ Script : upload\_gdrive
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Upload — {{ $('see upload status').item.json.status == 'done' ? 'completed ✅' : 'failed ❌' }}*
 
@@ -383,6 +401,7 @@ Finished: {{ $('see upload status').item.json.finished_at }}
 ```
 
 **Connections:**
+
 - output → no connection (workflow ends)
 
 ---
@@ -396,6 +415,7 @@ Finished: {{ $('see upload status').item.json.finished_at }}
 **Condition:** `{{ $('see upload status').item.json.status }}` **is equal to** `done`
 
 **Connections:**
+
 - `true` → Node 17 (Start Text Extraction)
 - `false` → no connection (workflow ends)
 
@@ -409,13 +429,14 @@ Finished: {{ $('see upload status').item.json.finished_at }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Method | `POST` |
-| URL | `http://127.0.0.1:8000/legal_extraction/text_extraction/run` |
-| Body Content Type | `JSON` |
+| Field             | Value                                                        |
+| ----------------- | ------------------------------------------------------------ |
+| Method            | `POST`                                                       |
+| URL               | `http://127.0.0.1:8000/legal_extraction/text_extraction/run` |
+| Body Content Type | `JSON`                                                       |
 
 **Body:**
+
 ```json
 {}
 ```
@@ -425,6 +446,7 @@ Finished: {{ $('see upload status').item.json.finished_at }}
 **Output:** `{ "job_id": "...", "status": "queued", "script": "text_extraction" }`
 
 **Connections:**
+
 - output → Node 18
 
 ---
@@ -439,15 +461,16 @@ Finished: {{ $('see upload status').item.json.finished_at }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Text | see below |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Text       | see below             |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Text Extraction — job started*
 
@@ -456,6 +479,7 @@ Script : text\_extraction
 ```
 
 **Connections:**
+
 - output → Node 19
 
 ---
@@ -468,13 +492,14 @@ Script : text\_extraction
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resume | `After time interval` |
-| Wait Amount | `30` |
-| Wait Unit | `Seconds` |
+| Field       | Value                 |
+| ----------- | --------------------- |
+| Resume      | `After time interval` |
+| Wait Amount | `30`                  |
+| Wait Unit   | `Seconds`             |
 
 **Connections:**
+
 - output → Node 20
 
 ---
@@ -487,10 +512,10 @@ Script : text\_extraction
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Method | `GET` |
-| URL | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run text extraction').item.json.job_id }}` |
+| Field  | Value                                                                                           |
+| ------ | ----------------------------------------------------------------------------------------------- |
+| Method | `GET`                                                                                           |
+| URL    | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run text extraction').item.json.job_id }}` |
 
 **Output:** `{ "job_id": "...", "status": "running" | "done" | "failed" | "error", ... }`
 
@@ -504,13 +529,14 @@ Script : text\_extraction
 
 **Configuration — Rules mode with expression conditions:**
 
-| Output name | Condition |
-|-------------|-----------|
-| `done` | `done` **is equal to** `{{ $json.status }}` |
-| `failed/error` | `failed` `error` **contains** `{{ $json.status }}` |
+| Output name      | Condition                                            |
+| ---------------- | ---------------------------------------------------- |
+| `done`           | `done` **is equal to** `{{ $json.status }}`          |
+| `failed/error`   | `failed` `error` **contains** `{{ $json.status }}`   |
 | `running/queued` | `running` `queued` **contains** `{{ $json.status }}` |
 
 **Connections:**
+
 - `done` → Node 22
 - `failed/error` → Node 22
 - `running/queued` → Node 19 (Wait Extraction) ← loop back
@@ -527,15 +553,16 @@ Script : text\_extraction
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Text | see below |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Text       | see below             |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Text Extraction — {{ $('see extraction status').item.json.status == 'done' ? 'completed ✅' : 'failed ❌' }}*
 
@@ -546,6 +573,7 @@ Finished  : {{ $('see extraction status').item.json.finished_at }}
 ```
 
 **Connections:**
+
 - output → no connection (workflow ends)
 
 ---
@@ -559,6 +587,7 @@ Finished  : {{ $('see extraction status').item.json.finished_at }}
 **Condition:** `{{ $('see extraction status').item.json.status }}` **is equal to** `done`
 
 **Connections:**
+
 - `true` → Node 24 (Start Article Extraction)
 - `false` → no connection (workflow ends)
 
@@ -572,13 +601,14 @@ Finished  : {{ $('see extraction status').item.json.finished_at }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Method | `POST` |
-| URL | `http://127.0.0.1:8000/legal_extraction/article_extraction/run` |
-| Body Content Type | `JSON` |
+| Field             | Value                                                           |
+| ----------------- | --------------------------------------------------------------- |
+| Method            | `POST`                                                          |
+| URL               | `http://127.0.0.1:8000/legal_extraction/article_extraction/run` |
+| Body Content Type | `JSON`                                                          |
 
 **Body:**
+
 ```json
 {}
 ```
@@ -588,6 +618,7 @@ Finished  : {{ $('see extraction status').item.json.finished_at }}
 **Output:** `{ "job_id": "...", "status": "queued", "script": "article_extraction" }`
 
 **Connections:**
+
 - output → Node 25
 
 ---
@@ -602,15 +633,16 @@ Finished  : {{ $('see extraction status').item.json.finished_at }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Text | see below |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Text       | see below             |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Article Extraction — job started*
 
@@ -619,6 +651,7 @@ Script : article\_extraction
 ```
 
 **Connections:**
+
 - output → Node 26
 
 ---
@@ -631,13 +664,14 @@ Script : article\_extraction
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resume | `After time interval` |
-| Wait Amount | `60` |
-| Wait Unit | `Seconds` |
+| Field       | Value                 |
+| ----------- | --------------------- |
+| Resume      | `After time interval` |
+| Wait Amount | `60`                  |
+| Wait Unit   | `Seconds`             |
 
 **Connections:**
+
 - output → Node 27
 
 ---
@@ -650,10 +684,10 @@ Script : article\_extraction
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Method | `GET` |
-| URL | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run article extraction').item.json.job_id }}` |
+| Field  | Value                                                                                              |
+| ------ | -------------------------------------------------------------------------------------------------- |
+| Method | `GET`                                                                                              |
+| URL    | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run article extraction').item.json.job_id }}` |
 
 > Set this field as an **Expression** (click the `=` toggle).
 
@@ -669,13 +703,14 @@ Script : article\_extraction
 
 **Configuration — Rules mode with expression conditions:**
 
-| Output name | Condition |
-|-------------|-----------|
-| `done` | `done` **is equal to** `{{ $json.status }}` |
-| `failed/error` | `failed` `error` **contains** `{{ $json.status }}` |
+| Output name      | Condition                                            |
+| ---------------- | ---------------------------------------------------- |
+| `done`           | `done` **is equal to** `{{ $json.status }}`          |
+| `failed/error`   | `failed` `error` **contains** `{{ $json.status }}`   |
 | `running/queued` | `running` `queued` **contains** `{{ $json.status }}` |
 
 **Connections:**
+
 - `done` → Node 29
 - `failed/error` → Node 29
 - `running/queued` → Node 26 (Wait Article Extraction) ← loop back
@@ -692,15 +727,16 @@ Script : article\_extraction
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Text | see below |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Text       | see below             |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Article Extraction — {{ $('see article extraction status').item.json.status == 'done' ? 'completed ✅' : 'failed ❌' }}*
 
@@ -711,6 +747,7 @@ Finished  : {{ $('see article extraction status').item.json.finished_at }}
 ```
 
 **Connections:**
+
 - output → Node 30 (IF Article Extraction Succeeded)
 
 ---
@@ -724,6 +761,7 @@ Finished  : {{ $('see article extraction status').item.json.finished_at }}
 **Condition:** `{{ $('see article extraction status').item.json.status }}` **is equal to** `done`
 
 **Connections:**
+
 - `true` → Node 31 (Start Embedding Job)
 - `false` → no connection (workflow ends)
 
@@ -737,13 +775,14 @@ Finished  : {{ $('see article extraction status').item.json.finished_at }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Method | `POST` |
-| URL | `http://127.0.0.1:8000/legal_extraction/embedding/run` |
-| Body Content Type | `JSON` |
+| Field             | Value                                                  |
+| ----------------- | ------------------------------------------------------ |
+| Method            | `POST`                                                 |
+| URL               | `http://127.0.0.1:8000/legal_extraction/embedding/run` |
+| Body Content Type | `JSON`                                                 |
 
 **Body:**
+
 ```json
 {}
 ```
@@ -753,6 +792,7 @@ Finished  : {{ $('see article extraction status').item.json.finished_at }}
 **Output:** `{ "job_id": "...", "status": "queued", "script": "embedding" }`
 
 **Connections:**
+
 - output → Node 32
 
 ---
@@ -767,15 +807,16 @@ Finished  : {{ $('see article extraction status').item.json.finished_at }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Text | see below |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Text       | see below             |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Embedding — job started*
 
@@ -785,6 +826,7 @@ Model  : BAAI/bge\-m3
 ```
 
 **Connections:**
+
 - output → Node 33
 
 ---
@@ -797,13 +839,14 @@ Model  : BAAI/bge\-m3
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resume | `After time interval` |
-| Wait Amount | `60` |
-| Wait Unit | `Seconds` |
+| Field       | Value                 |
+| ----------- | --------------------- |
+| Resume      | `After time interval` |
+| Wait Amount | `60`                  |
+| Wait Unit   | `Seconds`             |
 
 **Connections:**
+
 - output → Node 34
 
 ---
@@ -816,10 +859,10 @@ Model  : BAAI/bge\-m3
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Method | `GET` |
-| URL | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run embedding').item.json.job_id }}` |
+| Field  | Value                                                                                     |
+| ------ | ----------------------------------------------------------------------------------------- |
+| Method | `GET`                                                                                     |
+| URL    | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run embedding').item.json.job_id }}` |
 
 > Set this field as an **Expression** (click the `=` toggle).
 
@@ -835,13 +878,14 @@ Model  : BAAI/bge\-m3
 
 **Configuration — Rules mode with expression conditions:**
 
-| Output name | Condition |
-|-------------|-----------|
-| `done` | `done` **is equal to** `{{ $json.status }}` |
-| `failed/error` | `failed` `error` **contains** `{{ $json.status }}` |
+| Output name      | Condition                                            |
+| ---------------- | ---------------------------------------------------- |
+| `done`           | `done` **is equal to** `{{ $json.status }}`          |
+| `failed/error`   | `failed` `error` **contains** `{{ $json.status }}`   |
 | `running/queued` | `running` `queued` **contains** `{{ $json.status }}` |
 
 **Connections:**
+
 - `done` → Node 36
 - `failed/error` → Node 36
 - `running/queued` → Node 33 (Wait Embedding) ← loop back
@@ -858,15 +902,16 @@ Model  : BAAI/bge\-m3
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Text | see below |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Text       | see below             |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Embedding — {{ $('see embedding status').item.json.status == 'done' ? 'completed ✅' : 'failed ❌' }}*
 
@@ -877,6 +922,7 @@ Finished  : {{ $('see embedding status').item.json.finished_at }}
 ```
 
 **Connections:**
+
 - output → Node 37 (IF Embedding Succeeded)
 
 ---
@@ -890,6 +936,7 @@ Finished  : {{ $('see embedding status').item.json.finished_at }}
 **Condition:** `{{ $('see embedding status').item.json.status }}` **is equal to** `done`
 
 **Connections:**
+
 - `true` → Node 38 (Start Vector Storage Job)
 - `false` → no connection (workflow ends)
 
@@ -903,13 +950,14 @@ Finished  : {{ $('see embedding status').item.json.finished_at }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Method | `POST` |
-| URL | `http://127.0.0.1:8000/legal_extraction/vector_storage/run` |
-| Body Content Type | `JSON` |
+| Field             | Value                                                       |
+| ----------------- | ----------------------------------------------------------- |
+| Method            | `POST`                                                      |
+| URL               | `http://127.0.0.1:8000/legal_extraction/vector_storage/run` |
+| Body Content Type | `JSON`                                                      |
 
 **Body:**
+
 ```json
 {}
 ```
@@ -919,6 +967,7 @@ Finished  : {{ $('see embedding status').item.json.finished_at }}
 **Output:** `{ "job_id": "...", "status": "queued", "script": "vector_storage" }`
 
 **Connections:**
+
 - output → Node 39
 
 ---
@@ -933,15 +982,16 @@ Finished  : {{ $('see embedding status').item.json.finished_at }}
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Text | see below |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Text       | see below             |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Vector Storage — job started*
 
@@ -951,6 +1001,7 @@ Collection : jort\_articles
 ```
 
 **Connections:**
+
 - output → Node 40
 
 ---
@@ -963,13 +1014,14 @@ Collection : jort\_articles
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resume | `After time interval` |
-| Wait Amount | `30` |
-| Wait Unit | `Seconds` |
+| Field       | Value                 |
+| ----------- | --------------------- |
+| Resume      | `After time interval` |
+| Wait Amount | `30`                  |
+| Wait Unit   | `Seconds`             |
 
 **Connections:**
+
 - output → Node 41
 
 ---
@@ -982,10 +1034,10 @@ Collection : jort\_articles
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Method | `GET` |
-| URL | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run vector storage').item.json.job_id }}` |
+| Field  | Value                                                                                          |
+| ------ | ---------------------------------------------------------------------------------------------- |
+| Method | `GET`                                                                                          |
+| URL    | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run vector storage').item.json.job_id }}` |
 
 > Set this field as an **Expression** (click the `=` toggle).
 
@@ -1001,13 +1053,14 @@ Collection : jort\_articles
 
 **Configuration — Rules mode with expression conditions:**
 
-| Output name | Condition |
-|-------------|-----------|
-| `done` | `done` **is equal to** `{{ $json.status }}` |
-| `failed/error` | `failed` `error` **contains** `{{ $json.status }}` |
+| Output name      | Condition                                            |
+| ---------------- | ---------------------------------------------------- |
+| `done`           | `done` **is equal to** `{{ $json.status }}`          |
+| `failed/error`   | `failed` `error` **contains** `{{ $json.status }}`   |
 | `running/queued` | `running` `queued` **contains** `{{ $json.status }}` |
 
 **Connections:**
+
 - `done` → Node 43
 - `failed/error` → Node 43
 - `running/queued` → Node 40 (Wait Vector Storage) ← loop back
@@ -1024,15 +1077,16 @@ Collection : jort\_articles
 
 **Configuration:**
 
-| Field | Value |
-|-------|-------|
-| Resource | `Message` |
-| Operation | `Send Message` |
-| Chat ID | your personal Chat ID |
-| Text | see below |
-| Parse Mode | `Markdown` |
+| Field      | Value                 |
+| ---------- | --------------------- |
+| Resource   | `Message`             |
+| Operation  | `Send Message`        |
+| Chat ID    | your personal Chat ID |
+| Text       | see below             |
+| Parse Mode | `Markdown`            |
 
 **Message text (Expression):**
+
 ```
 *JORT Vector Storage — {{ $('see vector storage status').item.json.status == 'done' ? 'completed ✅' : 'failed ❌' }}*
 
@@ -1043,23 +1097,24 @@ Finished  : {{ $('see vector storage status').item.json.finished_at }}
 ```
 
 **Connections:**
+
 - output → no connection (pipeline complete — all 7 phases done)
 
 ---
 
 ## n8n URL reference
 
-| Node | Method | URL |
-|------|--------|-----|
-| run scraping | POST | `http://127.0.0.1:8000/legal_extraction/scraping/run` |
-| see status | GET | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run scraping').item.json.job_id }}` |
-| run upload | POST | `http://127.0.0.1:8000/legal_extraction/uploading_google_drive/run` |
-| see upload status | GET | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run upload').item.json.job_id }}` |
-| run text extraction | POST | `http://127.0.0.1:8000/legal_extraction/text_extraction/run` |
-| see extraction status | GET | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run text extraction').item.json.job_id }}` |
-| run article extraction | POST | `http://127.0.0.1:8000/legal_extraction/article_extraction/run` |
-| see article extraction status | GET | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run article extraction').item.json.job_id }}` |
-| run embedding | POST | `http://127.0.0.1:8000/legal_extraction/embedding/run` |
-| see embedding status | GET | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run embedding').item.json.job_id }}` |
-| run vector storage | POST | `http://127.0.0.1:8000/legal_extraction/vector_storage/run` |
-| see vector storage status | GET | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run vector storage').item.json.job_id }}` |
+| Node                          | Method | URL                                                                                                |
+| ----------------------------- | ------ | -------------------------------------------------------------------------------------------------- |
+| run scraping                  | POST   | `http://127.0.0.1:8000/legal_extraction/scraping/run`                                              |
+| see status                    | GET    | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run scraping').item.json.job_id }}`           |
+| run upload                    | POST   | `http://127.0.0.1:8000/legal_extraction/uploading_google_drive/run`                                |
+| see upload status             | GET    | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run upload').item.json.job_id }}`             |
+| run text extraction           | POST   | `http://127.0.0.1:8000/legal_extraction/text_extraction/run`                                       |
+| see extraction status         | GET    | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run text extraction').item.json.job_id }}`    |
+| run article extraction        | POST   | `http://127.0.0.1:8000/legal_extraction/article_extraction/run`                                    |
+| see article extraction status | GET    | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run article extraction').item.json.job_id }}` |
+| run embedding                 | POST   | `http://127.0.0.1:8000/legal_extraction/embedding/run`                                             |
+| see embedding status          | GET    | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run embedding').item.json.job_id }}`          |
+| run vector storage            | POST   | `http://127.0.0.1:8000/legal_extraction/vector_storage/run`                                        |
+| see vector storage status     | GET    | `http://127.0.0.1:8000/legal_extraction/status/{{ $('run vector storage').item.json.job_id }}`     |

@@ -18,7 +18,7 @@ The end goal is a **Tunisian legal RAG system**: a chatbot where users can ask q
 | 6 | Embedding | Done | BAAI/bge-m3 (local) |
 | 7 | Vector DB Storage | Done | Qdrant (Docker) |
 
-Orchestration across all phases is handled by an **n8n workflow** (43 nodes) that calls the **FastAPI server** (`api.py`) and sends Telegram notifications at each step.
+Orchestration across all phases is handled by an **n8n workflow** (49 nodes: 43 functional + 6 sticky notes) that calls the **FastAPI server** (`api.py`) and sends Telegram notifications at each step.
 
 ---
 
