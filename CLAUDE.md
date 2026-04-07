@@ -9,14 +9,14 @@ A 7-phase pipeline for scraping, uploading, and semantically indexing PDFs from 
 | # | Phase | Status | Output |
 |---|-------|--------|--------|
 | 1 | Scraping & PDF Download | ✅ Done | `pdfs/` + `checkpoints/` |
-| 2 | Google Drive Upload | 🔲 In Progress | GDrive `JORT/` folder tree |
-| 3 | Text Extraction | 🔲 Placeholder | `txt/` plain text |
-| 4 | Article Extraction | 🔲 Placeholder | `json/` structured records |
+| 2 | Google Drive Upload | ✅ Done | GDrive `JORT/` folder tree |
+| 3 | Text Extraction | 🔁 Done (may revisit) | `txt/` plain text |
+| 4 | Article Extraction | 🔁 Done (may revisit) | `json/` structured records |
 | 5 | Validation & Scoring | 🔲 Placeholder | `json/` + validation block |
 | 6 | Embedding | 🔲 Placeholder | `embeddings/` vectors |
 | 7 | Vector DB Storage | 🔲 Placeholder | Queryable vector index |
 
-Orchestration of phases 1–2 is handled by an **n8n workflow** that calls the **FastAPI server** (`api.py`) and sends Telegram notifications.
+Orchestration of phases 1–4 is handled by an **n8n workflow** (29 nodes) that calls the **FastAPI server** (`api.py`) and sends Telegram notifications.
 
 ## Setup
 
@@ -132,10 +132,12 @@ Available API script keys:
 | `annonces_legales_fr` | `scraping/download_journal_officiel_annonces_legales_francais.py` |
 | `tribunal_foncier_fr` | `scraping/download_journal_officiel_tribunal_foncier_francais.py` |
 | `upload_gdrive` | `rclone copy pdfs/ gdrive:JORT/ --progress` |
+| `text_extraction` | `text_extraction/extract_text.py` |
+| `article_extraction` | `article_extraction/extract_articles.py` |
 
 ### n8n workflow orchestration
 
-n8n (run locally via npm) drives the scraping → upload pipeline:
+n8n (run locally via npm) drives the scraping → upload → text extraction → article extraction pipeline (29 nodes):
 
 ```
 Manual Trigger → Config (Set) → POST /scraping/run → Telegram "started"
@@ -143,8 +145,20 @@ Manual Trigger → Config (Set) → POST /scraping/run → Telegram "started"
       ├─[done]──────────→ Telegram "download done ✅"
       │                     → POST /uploading_google_drive/run → Telegram "upload started"
       │                           → Wait 15s → GET /status/{job_id} → Switch(status)
-      │                                 ├─[done/failed]→ Telegram "upload done/failed"
-      │                                 └─[running]────→ Wait 15s (loop)
+      │                                 ├─[done]──→ Telegram "upload done ✅"
+      │                                 │            → IF upload succeeded?
+      │                                 │                true → POST /text_extraction/run → Telegram "extraction started"
+      │                                 │                         → Wait 30s → GET /status/{job_id} → Switch(status)
+      │                                 │                               ├─[done]──→ Telegram "extraction done ✅"
+      │                                 │                               │            → IF extraction succeeded?
+      │                                 │                               │                true → POST /article_extraction/run → Telegram "article extraction started"
+      │                                 │                               │                         → Wait 60s → GET /status/{job_id} → Switch(status)
+      │                                 │                               │                               ├─[done/failed]→ Telegram "article extraction done/failed"
+      │                                 │                               │                               └─[running]────→ Wait 60s (loop)
+      │                                 │                               ├─[failed]─→ Telegram "extraction failed ❌"
+      │                                 │                               └─[running]→ Wait 30s (loop)
+      │                                 ├─[failed]─→ Telegram "upload failed ❌"
+      │                                 └─[running]→ Wait 15s (loop)
       ├─[failed/error]──→ Telegram "scraper failed"
       └─[running/queued]→ Wait 10s (loop)
 ```
@@ -164,10 +178,13 @@ embeddings/   ← Phase 6 (planned)
 vectordb/     ← Phase 7 (planned, gitignored)
 ```
 
-### Planned phases (3–7)
+### Implemented phases (3–4)
 
-- **Phase 3 (Text Extraction):** `text_extraction/extract_text.py`. Converts PDFs to UTF-8 `.txt` page by page. Digital pages use `PyMuPDF` plain text extraction. Pages with too little text (`--min-text-len`, default 50 chars) or significant image area (`--max-image-coverage`, default 15%) are rendered to PNG and sent to Gemini via Vertex AI (`google-genai` SDK) for OCR. Gemini is prompted to output tables as markdown pipe tables. Credentials from `.env`. Supports `--pdf` for single-file testing. Checkpoint at `checkpoints/text_extraction.checkpoint.json`.
-- **Phase 4 (Article Extraction):** Parse `.txt` into structured JSON records per issue. Article boundaries inferred from heading patterns (`Décret n° ...`, etc.) in both languages.
+- **Phase 3 (Text Extraction):** `text_extraction/extract_text.py`. Converts PDFs to UTF-8 `.txt` page by page. Digital pages use `PyMuPDF` plain text extraction. Pages with too little text (`--min-text-len`, default 50 chars) or significant image area (`--max-image-coverage`, default 15%) are rendered to PNG and sent to Gemini via Vertex AI (`google-genai` SDK) for OCR. Gemini is prompted to output tables as markdown pipe tables. Credentials from `.env`. Supports `--pdf` for single-file testing. Checkpoint at `checkpoints/text_extraction.checkpoint.json`. API: `POST /legal_extraction/text_extraction/run`.
+- **Phase 4 (Article Extraction):** `article_extraction/extract_articles.py`. Two-stage Azure OpenAI pipeline: Stage 1 identifies article boundaries from the full document text; Stage 2 enriches each article individually into a ~45-field bilingual JSON schema (FR + AR content, keywords, legal domains, flags, graph metadata, embedding text). Reads from `txt/`, writes to `json/` mirroring the same tree. Fallback: regex boundary detection if Stage 1 fails; `_build_fallback()` if Stage 2 fails. Checkpoint at `checkpoints/article_extraction.checkpoint.json`. Single-file test via `--txt`. Model: `gpt-4.1` via Azure OpenAI (`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT` in `.env`). API: `POST /legal_extraction/article_extraction/run`.
+
+### Planned phases (5–7)
+
 - **Phase 5 (Validation & Scoring):** Add a `validation` block per article (`score`, `flags`, `passed`). Output strategy (in-place vs. parallel `json_validated/` tree) is TBD.
 - **Phase 6 (Embedding):** Generate dense vectors per article. Requires a multilingual model (AR+FR); candidates: `paraphrase-multilingual-mpnet-base-v2`, OpenAI `text-embedding-3-small`, AraBERT. Model choice gates Phase 7 schema (vector dimensions must match).
 - **Phase 7 (Vector DB):** Insert embeddings + metadata into a vector index (`jort_articles` collection). Candidates: Chroma (local dev), Qdrant, pgvector. DB choice is TBD.

@@ -1,5 +1,5 @@
 """
-JORT Workflow API — FastAPI wrapper for scraping, upload, and text extraction jobs.
+JORT Workflow API — FastAPI wrapper for scraping, upload, text extraction, and article extraction jobs.
 
 Run from the repo root:
     uvicorn api:app --port 8000 --reload
@@ -17,6 +17,18 @@ Uploading endpoints:
 Text extraction endpoints:
     POST /legal_extraction/text_extraction/run
     GET  /legal_extraction/text_extraction/jobs
+
+Article extraction endpoints:
+    POST /legal_extraction/article_extraction/run
+    GET  /legal_extraction/article_extraction/jobs
+
+Embedding endpoints:
+    POST /legal_extraction/embedding/run
+    GET  /legal_extraction/embedding/jobs
+
+Vector storage endpoints:
+    POST /legal_extraction/vector_storage/run
+    GET  /legal_extraction/vector_storage/jobs
 
 Shared endpoints:
     GET  /legal_extraction/status/{job_id}
@@ -59,7 +71,10 @@ UPLOAD_SCRIPTS: dict[str, list[str]] = {
     "upload_gdrive": ["rclone", "copy", "pdfs/", "gdrive:JORT/", "--progress"],
 }
 
-TEXT_EXTRACTION_SCRIPT = "text_extraction/extract_text.py"
+TEXT_EXTRACTION_SCRIPT    = "text_extraction/extract_text.py"
+ARTICLE_EXTRACTION_SCRIPT = "article_extraction/extract_articles.py"
+EMBEDDING_SCRIPT          = "embedding/embed_articles.py"
+VECTOR_STORAGE_SCRIPT     = "vector_storage/upsert_embeddings.py"
 
 # ---------------------------------------------------------------------------
 # Request models
@@ -99,6 +114,28 @@ class TextExtractionRunRequest(BaseModel):
     min_text_len: int     = Field(50, description="Chars threshold below which a page goes to Gemini")
     max_image_coverage: float = Field(0.15, description="Image area fraction above which a page goes to Gemini")
     dpi: int              = Field(150, description="Render DPI for pages sent to Gemini")
+
+
+class ArticleExtractionRunRequest(BaseModel):
+    txt: str | None   = Field(None, description="Single .txt path for testing (relative to repo root)")
+    txt_dir: str      = Field("txt",  description="Root directory of input .txt files")
+    json_dir: str     = Field("json", description="Root directory for output .json files")
+    delay: int        = Field(5000,   description="Delay in ms between article API calls")
+
+
+class EmbeddingRunRequest(BaseModel):
+    json: str | None        = Field(None, description="Single .json path for testing (relative to repo root)")
+    json_dir: str           = Field("json",       description="Root directory of input .json files")
+    embeddings_dir: str     = Field("embeddings", description="Root directory for output .embeddings.json files")
+    batch_size: int         = Field(32,            description="Number of articles per BGE-M3 batch")
+
+
+class VectorStorageRunRequest(BaseModel):
+    embeddings: str | None  = Field(None, description="Single .embeddings.json path for testing (relative to repo root)")
+    embeddings_dir: str     = Field("embeddings",        description="Root directory of input .embeddings.json files")
+    qdrant_url: str         = Field("http://localhost:6333", description="Qdrant base URL")
+    collection: str         = Field("jort_articles",     description="Qdrant collection name")
+    batch_size: int         = Field(100,                  description="Points per upsert call")
 
 # ---------------------------------------------------------------------------
 # Background job runner
@@ -154,10 +191,13 @@ def _utc_now() -> str:
 # Routers
 # ---------------------------------------------------------------------------
 
-main_router              = APIRouter(prefix="/legal_extraction")
-scraping_router          = APIRouter(prefix="/legal_extraction/scraping")
-upload_router            = APIRouter(prefix="/legal_extraction/uploading_google_drive")
-text_extraction_router   = APIRouter(prefix="/legal_extraction/text_extraction")
+main_router                = APIRouter(prefix="/legal_extraction")
+scraping_router            = APIRouter(prefix="/legal_extraction/scraping")
+upload_router              = APIRouter(prefix="/legal_extraction/uploading_google_drive")
+text_extraction_router     = APIRouter(prefix="/legal_extraction/text_extraction")
+article_extraction_router  = APIRouter(prefix="/legal_extraction/article_extraction")
+embedding_router           = APIRouter(prefix="/legal_extraction/embedding")
+vector_storage_router      = APIRouter(prefix="/legal_extraction/vector_storage")
 
 # --- Scraping ---
 
@@ -264,6 +304,97 @@ def text_extraction_jobs():
     jobs.sort(key=lambda j: j["created_at"], reverse=True)
     return jobs
 
+# --- Article extraction ---
+
+@article_extraction_router.post("/run", status_code=202)
+def article_extraction_run(req: ArticleExtractionRunRequest):
+    """Start an article extraction job."""
+    cmd = [
+        sys.executable, ARTICLE_EXTRACTION_SCRIPT,
+        "--txt-dir",  req.txt_dir,
+        "--json-dir", req.json_dir,
+        "--delay",    str(req.delay),
+    ]
+    if req.txt:
+        cmd += ["--txt", req.txt]
+
+    job_id = str(uuid.uuid4())
+    with _jobs_lock:
+        _jobs[job_id] = _make_job(job_id, "article_extraction", req.model_dump())
+
+    threading.Thread(target=_run_job, args=(job_id, cmd), daemon=True).start()
+    return {"job_id": job_id, "status": "queued", "script": "article_extraction"}
+
+
+@article_extraction_router.get("/jobs")
+def article_extraction_jobs():
+    """List article extraction jobs (most recent first)."""
+    with _jobs_lock:
+        jobs = [j for j in _jobs.values() if j["script"] == "article_extraction"]
+    jobs.sort(key=lambda j: j["created_at"], reverse=True)
+    return jobs
+
+# --- Embedding ---
+
+@embedding_router.post("/run", status_code=202)
+def embedding_run(req: EmbeddingRunRequest):
+    """Start an embedding job (Phase 6)."""
+    cmd = [
+        sys.executable, EMBEDDING_SCRIPT,
+        "--json-dir",       req.json_dir,
+        "--embeddings-dir", req.embeddings_dir,
+        "--batch-size",     str(req.batch_size),
+    ]
+    if req.json:
+        cmd += ["--json", req.json]
+
+    job_id = str(uuid.uuid4())
+    with _jobs_lock:
+        _jobs[job_id] = _make_job(job_id, "embedding", req.model_dump())
+
+    threading.Thread(target=_run_job, args=(job_id, cmd), daemon=True).start()
+    return {"job_id": job_id, "status": "queued", "script": "embedding"}
+
+
+@embedding_router.get("/jobs")
+def embedding_jobs():
+    """List embedding jobs (most recent first)."""
+    with _jobs_lock:
+        jobs = [j for j in _jobs.values() if j["script"] == "embedding"]
+    jobs.sort(key=lambda j: j["created_at"], reverse=True)
+    return jobs
+
+# --- Vector storage ---
+
+@vector_storage_router.post("/run", status_code=202)
+def vector_storage_run(req: VectorStorageRunRequest):
+    """Start a vector storage upsert job (Phase 7)."""
+    cmd = [
+        sys.executable, VECTOR_STORAGE_SCRIPT,
+        "--embeddings-dir", req.embeddings_dir,
+        "--qdrant-url",     req.qdrant_url,
+        "--collection",     req.collection,
+        "--batch-size",     str(req.batch_size),
+    ]
+    if req.embeddings:
+        cmd += ["--embeddings", req.embeddings]
+
+    job_id = str(uuid.uuid4())
+    with _jobs_lock:
+        _jobs[job_id] = _make_job(job_id, "vector_storage", req.model_dump())
+
+    threading.Thread(target=_run_job, args=(job_id, cmd), daemon=True).start()
+    return {"job_id": job_id, "status": "queued", "script": "vector_storage"}
+
+
+@vector_storage_router.get("/jobs")
+def vector_storage_jobs():
+    """List vector storage jobs (most recent first)."""
+    with _jobs_lock:
+        jobs = [j for j in _jobs.values() if j["script"] == "vector_storage"]
+    jobs.sort(key=lambda j: j["created_at"], reverse=True)
+    return jobs
+
 # --- Shared ---
 
 @main_router.get("/status/{job_id}")
@@ -282,7 +413,10 @@ def list_scripts():
     return {
         "scraper_scripts":          list(SCRAPER_SCRIPTS.keys()),
         "upload_scripts":           list(UPLOAD_SCRIPTS.keys()),
-        "text_extraction_scripts":  ["text_extraction"],
+        "text_extraction_scripts":    ["text_extraction"],
+        "article_extraction_scripts": ["article_extraction"],
+        "embedding_scripts":          ["embedding"],
+        "vector_storage_scripts":     ["vector_storage"],
     }
 
 # ---------------------------------------------------------------------------
@@ -292,4 +426,7 @@ def list_scripts():
 app.include_router(scraping_router)
 app.include_router(upload_router)
 app.include_router(text_extraction_router)
+app.include_router(article_extraction_router)
+app.include_router(embedding_router)
+app.include_router(vector_storage_router)
 app.include_router(main_router)

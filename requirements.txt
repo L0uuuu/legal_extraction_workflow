@@ -13,3 +13,12 @@ uvicorn>=0.29.0
 PyMuPDF>=1.24.0
 google-genai>=1.0.0
 python-dotenv>=1.0.0
+
+# Phase 4 — Article extraction
+openai>=1.0.0
+
+# Phase 6 — Embedding
+sentence-transformers>=3.0.0
+
+# Phase 7 — Vector database
+qdrant-client>=1.9.0
