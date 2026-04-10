@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Embedding — Phase 6
-Reads structured JSON articles produced by Phase 4 and generates dense vector
-embeddings using BAAI/bge-m3 (local, free, multilingual AR+FR).
+Reads structured JSON articles produced by Phase 4 and generates dense + sparse
+vector embeddings using BAAI/bge-m3 via FlagEmbedding (local, free, multilingual AR+FR).
 
 Run from the repo root:
     # Full batch
@@ -38,8 +38,12 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Root directory of input .json files (default: outputs/json)")
     p.add_argument("--embeddings-dir", default="outputs/embeddings",
                    help="Root directory for output .embeddings.json files (default: outputs/embeddings)")
-    p.add_argument("--batch-size",    type=int, default=32,
-                   help="Number of articles to embed per BGE-M3 batch (default: 32)")
+    # RTX 3050 4GB VRAM — keep batch size small to avoid OOM
+    p.add_argument("--batch-size",    type=int, default=4,
+                   help="Number of articles to embed per BGE-M3 batch (default: 4)")
+    # BGE-M3 supports up to 8192 tokens; drop to 4096 if you hit OOM
+    p.add_argument("--max-length",    type=int, default=8192,
+                   help="Max token length per text (default: 8192, reduce to 4096 if OOM)")
     return p
 
 # ---------------------------------------------------------------------------
@@ -99,9 +103,9 @@ _model = None
 def _get_model():
     global _model
     if _model is None:
-        print(f"[embed] Loading {MODEL_NAME} (first use — may take a moment) …")
-        from sentence_transformers import SentenceTransformer
-        _model = SentenceTransformer(MODEL_NAME)
+        print(f"[embed] Loading {MODEL_NAME} with FlagEmbedding (fp16) …")
+        from FlagEmbedding import BGEM3FlagModel
+        _model = BGEM3FlagModel(MODEL_NAME, use_fp16=True)
         print("[embed] Model loaded.")
     return _model
 
@@ -109,7 +113,8 @@ def _get_model():
 # Embed one JSON file → one .embeddings.json file
 # ---------------------------------------------------------------------------
 
-def _embed_file(json_path: Path, embeddings_dir: Path, batch_size: int) -> dict:
+def _embed_file(json_path: Path, embeddings_dir: Path, batch_size: int,
+                max_length: int) -> dict:
     """
     Returns a checkpoint file record dict.
     """
@@ -163,26 +168,41 @@ def _embed_file(json_path: Path, embeddings_dir: Path, batch_size: int) -> dict:
 
     valid_indices, valid_texts, valid_ids = zip(*valid)
 
-    # Embed in batches
-    model       = _get_model()
-    all_vectors = model.encode(
-        list(valid_texts),
-        batch_size=batch_size,
-        show_progress_bar=True,
-        normalize_embeddings=True,
-    ).tolist()
+    # Embed in batches — dense + sparse in one pass
+    model = _get_model()
+    try:
+        import torch
+        output = model.encode(
+            list(valid_texts),
+            batch_size=batch_size,
+            max_length=max_length,
+            return_dense=True,
+            return_sparse=True,
+            return_colbert_vecs=False,
+        )
+    except torch.cuda.OutOfMemoryError:
+        record["error"] = (
+            "CUDA out of memory. Reduce --batch-size (current: "
+            f"{batch_size}) or --max-length (current: {max_length})."
+        )
+        print(f"[embed] OOM  {json_path}: {record['error']}", file=sys.stderr)
+        return record
+
+    dense_vecs     = output["dense_vecs"]    # numpy array (N, 1024)
+    lexical_weights = output["lexical_weights"]  # list of dicts {str(token_id): float}
 
     # Build output records
     results = []
-    vec_iter = iter(all_vectors)
-    for idx, text, aid in zip(valid_indices, valid_texts, valid_ids):
-        a   = articles[idx]
-        vec = next(vec_iter)
+    for i, (idx, text, aid) in enumerate(zip(valid_indices, valid_texts, valid_ids)):
+        a = articles[idx]
+        # Convert sparse weights: string token-id keys → int keys
+        sparse = {int(k): float(v) for k, v in lexical_weights[i].items()}
         results.append({
             "id":    aid,
             **a,
-            "model": MODEL_NAME,
-            "vector": vec,
+            "model":          MODEL_NAME,
+            "dense_vector":   dense_vecs[i].tolist(),
+            "sparse_vector":  sparse,
         })
 
     # Write output
@@ -191,7 +211,7 @@ def _embed_file(json_path: Path, embeddings_dir: Path, batch_size: int) -> dict:
 
     record["articles_count"] = len(results)
     record["status"]         = "embedded"
-    print(f"[embed] OK  {json_path}  ({len(results)} articles)")
+    print(f"[embed] OK  {json_path}  ({len(results)} articles, dense+sparse)")
     return record
 
 # ---------------------------------------------------------------------------
@@ -226,7 +246,7 @@ def main() -> None:
             cp["totals"]["skipped"] += 1
             continue
 
-        record = _embed_file(json_path, embeddings_dir, batch_size)
+        record = _embed_file(json_path, embeddings_dir, batch_size, args.max_length)
         _upsert_file_record(cp, record)
 
         if record["status"] == "embedded":

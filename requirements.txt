@@ -19,6 +19,8 @@ openai>=1.0.0
 
 # Phase 6 — Embedding
 sentence-transformers>=3.0.0
+FlagEmbedding>=1.2.10
+transformers>=4.38.0,<5.0.0
 
 # Phase 7 — Vector database
 qdrant-client>=1.9.0

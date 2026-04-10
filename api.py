@@ -124,17 +124,19 @@ class ArticleExtractionRunRequest(BaseModel):
 
 
 class EmbeddingRunRequest(BaseModel):
-    json: str | None        = Field(None, description="Single .json path for testing (relative to repo root)")
+    model_config = {"populate_by_name": True}
+    single_json: str | None = Field(None, alias="json", description="Single .json path for testing (relative to repo root)")
     json_dir: str           = Field("outputs/json",       description="Root directory of input .json files")
     embeddings_dir: str     = Field("outputs/embeddings", description="Root directory for output .embeddings.json files")
-    batch_size: int         = Field(32,            description="Number of articles per BGE-M3 batch")
+    batch_size: int         = Field(4,             description="Articles per BGE-M3 batch (default 4 for 4GB VRAM)")
+    max_length: int         = Field(8192,          description="Max token length per text (reduce to 4096 if OOM)")
 
 
 class VectorStorageRunRequest(BaseModel):
     embeddings: str | None  = Field(None, description="Single .embeddings.json path for testing (relative to repo root)")
     embeddings_dir: str     = Field("outputs/embeddings", description="Root directory of input .embeddings.json files")
     qdrant_url: str         = Field("http://localhost:6333", description="Qdrant base URL")
-    collection: str         = Field("jort_articles",     description="Qdrant collection name")
+    collection: str         = Field("jort_articles_v2",   description="Qdrant collection name")
     batch_size: int         = Field(100,                  description="Points per upsert call")
 
 # ---------------------------------------------------------------------------
@@ -344,13 +346,14 @@ def embedding_run(req: EmbeddingRunRequest):
         "--json-dir",       req.json_dir,
         "--embeddings-dir", req.embeddings_dir,
         "--batch-size",     str(req.batch_size),
+        "--max-length",     str(req.max_length),
     ]
-    if req.json:
-        cmd += ["--json", req.json]
+    if req.single_json:
+        cmd += ["--json", req.single_json]
 
     job_id = str(uuid.uuid4())
     with _jobs_lock:
-        _jobs[job_id] = _make_job(job_id, "embedding", req.model_dump())
+        _jobs[job_id] = _make_job(job_id, "embedding", req.model_dump(by_alias=True))
 
     threading.Thread(target=_run_job, args=(job_id, cmd), daemon=True).start()
     return {"job_id": job_id, "status": "queued", "script": "embedding"}

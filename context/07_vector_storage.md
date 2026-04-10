@@ -18,11 +18,11 @@ Persist the embeddings produced in Phase 6, along with all article metadata, in 
 embeddings/<section>/<year>/JORT_NNN_YYYY-MM-DD.embeddings.json
 ```
 
-Each file is an array of article objects produced by Phase 6, each containing an `id`, a `vector` (1024 floats), and all article metadata fields.
+Each file is an array of article objects produced by Phase 6, each containing an `id`, a `dense_vector` (1024 floats), a `sparse_vector` (dict of token-id → weight), and all article metadata fields.
 
 ## Outputs
 
-A queryable **Qdrant collection** named `jort_articles` running locally at `http://localhost:6333`.
+A queryable **Qdrant collection** named `jort_articles_v2` running locally at `http://localhost:6333`. Uses named vectors: `dense` (1024-dim, cosine) + `sparse` (lexical weights via `SparseVectorParams`), enabling hybrid search with RRF fusion at query time. The old `jort_articles` collection is preserved for A/B comparison.
 
 No new local files — data lives in the Qdrant Docker volume (`qdrant_storage`).
 
@@ -48,17 +48,18 @@ vector_storage/
   upsert_embeddings.py      ← insertion script
 
 checkpoints/
-  vector_storage.checkpoint.json
+  vector_storage_v2.checkpoint.json
 ```
 
 Qdrant data lives in the Docker volume `qdrant_storage` — not in the repo. This is already covered by `.gitignore`.
 
-## Collection schema — `jort_articles`
+## Collection schema — `jort_articles_v2`
 
 | Field | Type | Indexed | Notes |
 |-------|------|---------|-------|
 | `id` | UUID string | yes | Qdrant point ID — assigned at embed time |
-| `vector` | float[1024] | yes (cosine ANN) | BAAI/bge-m3 output |
+| `dense` (named vector) | float[1024] | yes (cosine ANN) | BAAI/bge-m3 dense output |
+| `sparse` (named vector) | sparse | yes | BAAI/bge-m3 lexical weights for hybrid retrieval |
 | `year` | keyword | filterable | |
 | `law_type` | keyword | filterable | `Arrêté`, `Décret`, `Loi`, etc. |
 | `institution` | keyword | filterable | |
@@ -88,7 +89,7 @@ Key flags:
 | `--embeddings` | — | Single .embeddings.json path (test mode) |
 | `--embeddings-dir` | `embeddings` | Root of input files (batch mode) |
 | `--qdrant-url` | `http://localhost:6333` | Qdrant base URL |
-| `--collection` | `jort_articles` | Qdrant collection name |
+| `--collection` | `jort_articles_v2` | Qdrant collection name |
 | `--batch-size` | `100` | Points per upsert call |
 
 ## Checkpoint schema
@@ -96,7 +97,7 @@ Key flags:
 ```json
 {
   "script_name": "upsert_embeddings.py",
-  "collection":  "jort_articles",
+  "collection":  "jort_articles_v2",
   "created_at":  "...",
   "updated_at":  "...",
   "totals": { "upserted": 0, "skipped": 0, "failed": 0 },
@@ -114,6 +115,8 @@ Key flags:
 
 ## Key Notes / Decisions
 
+- **Hybrid dense + sparse vectors.** The collection uses named vectors: `dense` (1024-dim cosine) and `sparse` (lexical weights). This enables hybrid search with RRF fusion at query time, improving retrieval for exact legal terms (article numbers, law references).
+- **Old collection preserved.** `jort_articles` (dense-only) is kept for A/B comparison. The new collection is `jort_articles_v2`.
 - **Vector dimensions are fixed at 1024** — matches BAAI/bge-m3. Changing the embedding model requires dropping the collection and re-inserting the full corpus.
 - **Payload indexes are created automatically** on first run for the 10 most-queried filterable fields. No manual schema setup needed.
 - **Skip logic is checkpoint-based.** A file already marked `upserted` in the checkpoint is skipped without re-reading. To force re-upsert, delete the checkpoint entry or the whole checkpoint file.
@@ -129,7 +132,7 @@ Key flags:
   "embeddings":     "embeddings/.../2026/JORT_001_2026-01-02.embeddings.json",
   "embeddings_dir": "embeddings",
   "qdrant_url":     "http://localhost:6333",
-  "collection":     "jort_articles",
+  "collection":     "jort_articles_v2",
   "batch_size":     100
 }
 ```

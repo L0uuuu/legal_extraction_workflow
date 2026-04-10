@@ -22,6 +22,8 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
     VectorParams,
+    SparseVectorParams,
+    SparseVector,
     PointStruct,
     PayloadSchemaType,
 )
@@ -30,10 +32,10 @@ from qdrant_client.models import (
 # Constants
 # ---------------------------------------------------------------------------
 
-COLLECTION_NAME  = "jort_articles"
+COLLECTION_NAME  = "jort_articles_v2"
 VECTOR_SIZE      = 1024          # BAAI/bge-m3 output dimension
 QDRANT_URL       = "http://localhost:6333"
-CHECKPOINT_PATH  = Path("outputs/checkpoints/vector_storage.checkpoint.json")
+CHECKPOINT_PATH  = Path("outputs/checkpoints/vector_storage_v2.checkpoint.json")
 BATCH_SIZE       = 100           # points per upsert call
 
 # Fields stored as filterable payload in Qdrant
@@ -113,12 +115,17 @@ def _upsert_file_record(cp: dict, record: dict) -> None:
 # ---------------------------------------------------------------------------
 
 def _ensure_collection(client: QdrantClient, collection: str) -> None:
-    """Create the collection if it does not exist."""
+    """Create the collection if it does not exist (hybrid dense + sparse)."""
     existing = [c.name for c in client.get_collections().collections]
     if collection not in existing:
         client.create_collection(
             collection_name=collection,
-            vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
+            vectors_config={
+                "dense": VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
+            },
+            sparse_vectors_config={
+                "sparse": SparseVectorParams(),
+            },
         )
         # Create payload indexes for the most-queried filterable fields
         for field, schema_type in [
@@ -147,7 +154,7 @@ def _build_payload(article: dict) -> dict:
     """Extract all non-vector fields as the Qdrant point payload."""
     payload = {}
     for key, value in article.items():
-        if key in ("id", "vector"):
+        if key in ("id", "vector", "dense_vector", "sparse_vector"):
             continue
         # Store all fields; mark filterable ones for indexed queries
         payload[key] = value
@@ -179,16 +186,24 @@ def _upsert_file(
         record["error"] = "Empty or non-array JSON"
         return record
 
-    # Build PointStructs
+    # Build PointStructs (hybrid: dense + sparse named vectors)
     points = []
     for article in articles:
-        article_id = article.get("id")
-        vector     = article.get("vector")
-        if not article_id or not vector:
+        article_id   = article.get("id")
+        dense_vector = article.get("dense_vector")
+        if not article_id or not dense_vector:
             continue
+
+        # Build sparse vector (graceful fallback to empty if missing)
+        raw_sparse = article.get("sparse_vector", {})
+        sparse_obj = SparseVector(
+            indices=[int(k) for k in raw_sparse.keys()],
+            values=[float(v) for v in raw_sparse.values()],
+        ) if raw_sparse else SparseVector(indices=[], values=[])
+
         points.append(PointStruct(
             id      = article_id,
-            vector  = vector,
+            vector  = {"dense": dense_vector, "sparse": sparse_obj},
             payload = _build_payload(article),
         ))
 

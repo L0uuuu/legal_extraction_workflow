@@ -15,8 +15,8 @@ The end goal is a **Tunisian legal RAG system**: a chatbot where users can ask q
 | 3 | Text Extraction | Done (may revisit) | PyMuPDF + Gemini (Vertex AI) |
 | 4 | Article Extraction | Done (may revisit) | Azure OpenAI gpt-4.1 |
 | 5 | Validation & Scoring | Placeholder | TBD |
-| 6 | Embedding | Done | BAAI/bge-m3 (local) |
-| 7 | Vector DB Storage | Done | Qdrant (Docker) |
+| 6 | Embedding | Done | BAAI/bge-m3 dense+sparse (FlagEmbedding) |
+| 7 | Vector DB Storage | Done | Qdrant hybrid (dense+sparse, `jort_articles_v2`) |
 
 Orchestration across all phases is handled by an **n8n workflow** (49 nodes: 43 functional + 6 sticky notes) that calls the **FastAPI server** (`api.py`) and sends Telegram notifications at each step.
 
@@ -119,10 +119,14 @@ python text_extraction/extract_text.py --pdf "outputs/pdfs/.../JORT_001_2026-01-
 # Phase 4 - article extraction (single file test)
 python article_extraction/extract_articles.py --txt "outputs/txt/.../JORT_001_2026-01-02.txt"
 
-# Phase 6 - embedding (single file test)
-python embedding/embed_articles.py --json "outputs/json/.../JORT_001_2026-01-02.json"
+# Phase 6 - embedding (single file test, dense+sparse)
+python embedding/embed_articles.py --json "outputs/json/.../JORT_001_2026-01-02.json" --batch-size 4
 
-# Phase 7 - vector storage (single file test)
+# Phase 6 - migrate existing dense-only embeddings to dense+sparse
+python embedding/resparse_existing.py --dry-run   # preview
+python embedding/resparse_existing.py              # apply
+
+# Phase 7 - vector storage (single file test, hybrid collection)
 python vector_storage/upsert_embeddings.py --embeddings "outputs/embeddings/.../JORT_001_2026-01-02.embeddings.json"
 ```
 
@@ -142,7 +146,8 @@ legal_extraction_workflow/
 ├── article_extraction/         # Phase 4
 │   └── extract_articles.py
 ├── embedding/                  # Phase 6
-│   └── embed_articles.py
+│   ├── embed_articles.py
+│   └── resparse_existing.py    # Migration: add sparse vectors to existing embeddings
 ├── vector_storage/             # Phase 7
 │   └── upsert_embeddings.py
 ├── outputs/                    # All phase outputs (gitignored where large)

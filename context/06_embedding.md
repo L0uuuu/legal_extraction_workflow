@@ -35,7 +35,8 @@ Each output file is an array — one entry per article — with all original art
     "title_french": "...",
     "embedding_text": "...",
     "model": "BAAI/bge-m3",
-    "vector": [0.021, -0.043, ...],
+    "dense_vector": [0.021, -0.043, ...],
+    "sparse_vector": {"12345": 0.83, "67890": 0.41, ...},
     "...all other article fields..."
   }
 ]
@@ -46,28 +47,32 @@ Key additions vs. the Phase 4 JSON:
 | Field | Description |
 |-------|-------------|
 | `id` | UUID v4 assigned per article at embedding time |
-| `model` | Model name (`BAAI/bge-m3`) stored alongside the vector |
-| `vector` | Dense float list — 1024 dimensions (bge-m3 default) |
+| `model` | Model name (`BAAI/bge-m3`) stored alongside the vectors |
+| `dense_vector` | Dense float list — 1024 dimensions (bge-m3 default) |
+| `sparse_vector` | Sparse lexical weights — dict of `{token_id: weight}` for hybrid retrieval |
 
 ## Tools & Technologies
 
 | Tool | Role |
 |------|------|
-| `embedding/embed_articles.py` | Main script |
-| `BAAI/bge-m3` (via `sentence-transformers`) | Local multilingual embedding model (AR+FR) |
-| `sentence-transformers>=3.0.0` | Python library for model loading and batch encoding |
+| `embedding/embed_articles.py` | Main script (dense + sparse) |
+| `embedding/resparse_existing.py` | Migration script — adds sparse vectors to existing dense-only embeddings |
+| `BAAI/bge-m3` (via `FlagEmbedding.BGEM3FlagModel`) | Local multilingual embedding model (AR+FR) |
+| `FlagEmbedding>=1.2.10` | Python library for hybrid dense+sparse encoding |
 
 Model chosen: **BAAI/bge-m3**
 - Free, local (no API cost)
 - Multilingual — handles Arabic and French natively
-- 1024-dimensional vectors, `normalize_embeddings=True`
+- 1024-dimensional dense vectors + sparse lexical weights in one pass
+- `use_fp16=True` to fit in 4GB VRAM (RTX 3050)
 - Downloaded automatically from HuggingFace on first run
 
 ## Folder / File Structure
 
 ```
 embedding/
-  embed_articles.py         ← main script
+  embed_articles.py         ← main script (dense + sparse)
+  resparse_existing.py      ← migration: add sparse to existing embeddings
 
 embeddings/
   <section>/
@@ -97,9 +102,19 @@ Key flags:
 | `--json` | — | Single .json path (test mode) |
 | `--json-dir` | `json` | Root of input .json files (batch mode) |
 | `--embeddings-dir` | `embeddings` | Root for output .embeddings.json files |
-| `--batch-size` | `32` | Articles per BGE-M3 encode batch |
+| `--batch-size` | `4` | Articles per BGE-M3 encode batch (low default for 4GB VRAM) |
+| `--max-length` | `8192` | Max token length per text (reduce to 4096 if OOM) |
 
 No credentials required — model runs locally.
+
+### Migrating existing dense-only embeddings
+
+```bash
+python embedding/resparse_existing.py --dry-run   # preview changes
+python embedding/resparse_existing.py              # apply migration
+```
+
+This renames `vector` → `dense_vector` and generates `sparse_vector` for each article without recomputing dense embeddings. Checkpoint: `outputs/checkpoints/resparse.checkpoint.json`.
 
 ## Checkpoint schema
 
@@ -133,7 +148,8 @@ No credentials required — model runs locally.
 - **Skip logic is output-file-first.** If the `.embeddings.json` already exists on disk, the file is marked `skipped` without re-encoding. To force re-embedding, delete the output file.
 - **Checkpoint is secondary.** A file is also skipped if its entry in the checkpoint has `status: embedded`. This guards against partial runs where the output file was written but the checkpoint was not yet saved.
 - **Article IDs are assigned at embed time.** Each article gets a fresh UUID v4 (`id` field) that becomes the stable identifier used in Phase 7 for vector DB insertion.
-- **Model loaded lazily.** `_get_model()` initialises `SentenceTransformer` only when the first file is processed, so the CLI starts instantly and only downloads/loads the model if there is actual work to do.
+- **OOM guard.** The encode call is wrapped in `try/except torch.cuda.OutOfMemoryError`. On OOM, the script logs a message advising the user to reduce `--batch-size` or `--max-length`.
+- **Model loaded lazily.** `_get_model()` initialises `BGEM3FlagModel` only when the first file is processed, so the CLI starts instantly and only downloads/loads the model if there is actual work to do.
 - **Exits 1 on total failure.** If zero files are embedded and zero skipped, the script exits with code 1, signalling the API job as `failed`.
 - **Phase 5 skipped.** Phase 6 reads directly from Phase 4 JSON output — no separate validation/scoring pass is applied before embedding.
 
@@ -146,7 +162,8 @@ No credentials required — model runs locally.
   "json":           "json/.../2026/JORT_001_2026-01-02.json",
   "json_dir":       "json",
   "embeddings_dir": "embeddings",
-  "batch_size":     32
+  "batch_size":     4,
+  "max_length":     8192
 }
 ```
 

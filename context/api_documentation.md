@@ -160,7 +160,7 @@ List all article extraction jobs, most recent first.
 
 ### `POST /legal_extraction/embedding/run`
 
-Start an embedding job (Phase 6). Reads `.json` files from `json/`, encodes each article's `embedding_text` with BAAI/bge-m3, and writes `.embeddings.json` files to `embeddings/`.
+Start an embedding job (Phase 6). Reads `.json` files from `json/`, encodes each article's `embedding_text` with BAAI/bge-m3 via FlagEmbedding, producing both dense (1024-dim) and sparse (lexical weights) vectors, and writes `.embeddings.json` files to `embeddings/`.
 
 **Request body (all fields optional):**
 ```json
@@ -168,9 +168,18 @@ Start an embedding job (Phase 6). Reads `.json` files from `json/`, encodes each
   "json":           "json/Journal_Officiel_.../2026/JORT_001_2026-01-02.json",
   "json_dir":       "json",
   "embeddings_dir": "embeddings",
-  "batch_size":     32
+  "batch_size":     4,
+  "max_length":     8192
 }
 ```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `json` | — | Single .json path for testing |
+| `json_dir` | `outputs/json` | Root of input .json files |
+| `embeddings_dir` | `outputs/embeddings` | Root for output .embeddings.json files |
+| `batch_size` | `4` | Articles per encode batch (low default for 4GB VRAM) |
+| `max_length` | `8192` | Max token length per text (reduce to 4096 if OOM) |
 
 > Omit `json` to run the full batch. Include `json` to test with a single file.
 > A file is skipped if its `.embeddings.json` already exists or the checkpoint marks it `embedded`. Delete the output file to force re-embedding.
@@ -192,7 +201,7 @@ List all embedding jobs, most recent first.
 
 ### `POST /legal_extraction/vector_storage/run`
 
-Start a vector storage upsert job (Phase 7). Reads `.embeddings.json` files from `embeddings/` and upserts all articles as points into the `jort_articles` Qdrant collection.
+Start a vector storage upsert job (Phase 7). Reads `.embeddings.json` files from `embeddings/` and upserts all articles as points into the `jort_articles_v2` Qdrant collection using hybrid named vectors (dense + sparse).
 
 **Request body (all fields optional):**
 ```json
@@ -200,14 +209,23 @@ Start a vector storage upsert job (Phase 7). Reads `.embeddings.json` files from
   "embeddings":     "embeddings/Journal_Officiel_.../2026/JORT_001_2026-01-02.embeddings.json",
   "embeddings_dir": "embeddings",
   "qdrant_url":     "http://localhost:6333",
-  "collection":     "jort_articles",
+  "collection":     "jort_articles_v2",
   "batch_size":     100
 }
 ```
 
+| Field | Default | Description |
+|-------|---------|-------------|
+| `embeddings` | — | Single .embeddings.json path for testing |
+| `embeddings_dir` | `outputs/embeddings` | Root of input files |
+| `qdrant_url` | `http://localhost:6333` | Qdrant base URL |
+| `collection` | `jort_articles_v2` | Qdrant collection (hybrid dense+sparse) |
+| `batch_size` | `100` | Points per upsert call |
+
 > Omit `embeddings` to run the full batch. Include `embeddings` to test with a single file.
 > A file is skipped if its checkpoint entry is already `upserted`. Upsert is idempotent — re-running is safe.
 > Qdrant must be running before calling this endpoint (`docker start qdrant`).
+> The old `jort_articles` collection is preserved for A/B comparison.
 
 **Response:**
 ```json
