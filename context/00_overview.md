@@ -95,6 +95,8 @@ legal_extraction_workflow/
 ├── article_extraction/         # Phase 4 — article extraction script
 ├── embedding/                  # Phase 6 — embedding script
 ├── vector_storage/             # Phase 7 — Qdrant insertion script
+├── rag/                        # RAG query layer (post-pipeline)
+│   └── query.py                # Hybrid search + Ollama chatbot
 ├── outputs/                    # All phase outputs
 │   ├── pdfs/                   # Phase 1 — downloaded PDFs
 │   ├── txt/                    # Phase 3 — extracted text
@@ -103,5 +105,5 @@ legal_extraction_workflow/
 │   └── checkpoints/            # Resume state for all phases
 ├── api.py                      # FastAPI server
 ├── requirements.txt
-└── claude context/             # Project documentation (this folder)
+└── context/                    # Project documentation (this folder)
 ```

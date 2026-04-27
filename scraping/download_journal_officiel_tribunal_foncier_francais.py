@@ -165,6 +165,12 @@ def main():
         start_url=args.start_url,
     )
 
+    downloaded_paths = {
+        f["filepath"]
+        for f in checkpoint.get("files", [])
+        if f.get("status") == "downloaded"
+    }
+
     total_downloaded = 0
     total_skipped = 0
     total_failed = 0
@@ -218,8 +224,8 @@ def main():
                     filename = f"JORT_TribunalFoncier_{issue_num}_{date_iso}.pdf"
                     filepath = os.path.join(year_dir, filename)
 
-                    if os.path.exists(filepath):
-                        print(f"     {issue_num} ({date_str}) → ⏩ already exists")
+                    if filepath in downloaded_paths:
+                        print(f"     {issue_num} ({date_str}) → ⏩ already in checkpoint")
                         year_skipped += 1
                         continue
 
@@ -229,6 +235,7 @@ def main():
                         dl = dl_info.value
                         dl.save_as(filepath)
                         print(f"     {issue_num} ({date_str}) → ✅ {filename}")
+                        downloaded_paths.add(filepath)
                         year_downloaded += 1
                         total_downloaded += 1
                         time.sleep(args.sleep_after_download_s)

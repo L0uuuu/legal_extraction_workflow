@@ -70,6 +70,26 @@ Common flags (all refactored scripts share these via `scraper_common.build_commo
 | `--short-wait-ms` | `200` | Short internal wait |
 | `--sleep-after-download-s` | `0.5` | Sleep between downloads |
 
+## Running the RAG query
+
+```bash
+# Prerequisites: Qdrant running + Ollama running with qwen3:4b pulled
+docker start qdrant
+ollama serve
+
+# Single question
+python rag/query.py "Quelles sont les obligations des employeurs en matière de sécurité?"
+
+# With year filter
+python rag/query.py "Quelles sont les obligations des employeurs?" --year 2024
+
+# Arabic question
+python rag/query.py "ما هي حقوق العمال في القانون التونسي؟" --year 2025
+
+# Interactive loop
+python rag/query.py --interactive --year 2024
+```
+
 ## Architecture
 
 ### Two generations of scraper scripts
@@ -86,6 +106,8 @@ scraping/
 ```
 
 The `*_francais.py` scripts are canonical. Legacy scripts have hardcoded `START_YEAR`/`END_YEAR` and use Arabic UI selectors. The refactored scripts add CLI args, headless mode, retries, and checkpoints. Only the refactored scripts are exposed by the API.
+
+**Skip logic is checkpoint-driven.** All three `*_francais.py` scripts build a `downloaded_paths` set from checkpoint entries with `status == "downloaded"` at startup and skip any file whose `filepath` is already in that set — no filesystem `os.path.exists` check. This means moving or deleting the `pdfs/` folder does not cause re-downloads as long as the checkpoint is intact.
 
 ### Scraper navigation pattern
 
