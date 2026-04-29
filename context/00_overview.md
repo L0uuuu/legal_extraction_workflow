@@ -96,7 +96,8 @@ legal_extraction_workflow/
 ├── embedding/                  # Phase 6 — embedding script
 ├── vector_storage/             # Phase 7 — Qdrant insertion script
 ├── rag/                        # RAG query layer (post-pipeline)
-│   └── query.py                # Hybrid search + Ollama chatbot
+│   ├── query.py                # Hybrid search + reranking + Ollama chatbot
+│   └── test_questions.md       # Manual test suite for reranking and history
 ├── outputs/                    # All phase outputs
 │   ├── pdfs/                   # Phase 1 — downloaded PDFs
 │   ├── txt/                    # Phase 3 — extracted text

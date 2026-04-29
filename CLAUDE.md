@@ -1,20 +1,22 @@
 # CLAUDE.md
 
+# Tunisian Legal AI: Retrieval-Augmented Generation & Domain-Adaptive Fine-Tuning
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
 A 7-phase pipeline for scraping, uploading, and semantically indexing PDFs from the Tunisian Official Journal (JORT — Journal Officiel de la République Tunisienne) at `iort.gov.tn`.
 
-| # | Phase | Status | Output |
-|---|-------|--------|--------|
-| 1 | Scraping & PDF Download | ✅ Done | `pdfs/` + `checkpoints/` |
-| 2 | Google Drive Upload | ✅ Done | GDrive `JORT/` folder tree |
-| 3 | Text Extraction | 🔁 Done (may revisit) | `txt/` plain text |
-| 4 | Article Extraction | 🔁 Done (may revisit) | `json/` structured records |
-| 5 | Validation & Scoring | 🔲 Placeholder | `json/` + validation block |
-| 6 | Embedding | ✅ Done | `embeddings/` vectors |
-| 7 | Vector DB Storage | ✅ Done | Queryable vector index (Qdrant) |
+| #   | Phase                   | Status                | Output                          |
+| --- | ----------------------- | --------------------- | ------------------------------- |
+| 1   | Scraping & PDF Download | ✅ Done               | `pdfs/` + `checkpoints/`        |
+| 2   | Google Drive Upload     | ✅ Done               | GDrive `JORT/` folder tree      |
+| 3   | Text Extraction         | 🔁 Done (may revisit) | `txt/` plain text               |
+| 4   | Article Extraction      | 🔁 Done (may revisit) | `json/` structured records      |
+| 5   | Validation & Scoring    | 🔲 Placeholder        | `json/` + validation block      |
+| 6   | Embedding               | ✅ Done               | `embeddings/` vectors           |
+| 7   | Vector DB Storage       | ✅ Done               | Queryable vector index (Qdrant) |
 
 Orchestration of phases 1–7 is handled by an **n8n workflow** (43 nodes) that calls the **FastAPI server** (`api.py`) and sends Telegram notifications.
 
@@ -26,6 +28,7 @@ playwright install chromium
 ```
 
 For uploads, also install rclone and configure a `gdrive` remote:
+
 ```bash
 winget install Rclone.Rclone
 rclone config   # create remote named "gdrive", storage type: Google Drive
@@ -57,18 +60,18 @@ python scraping/download_journal_officiel_tribunal_foncier_francais.py \
 
 Common flags (all refactored scripts share these via `scraper_common.build_common_parser`):
 
-| Flag | Default | Description |
-|---|---|---|
-| `--start-year` / `--end-year` | required | Year range (inclusive) |
-| `--base-dir` | script-specific | Output directory root |
-| `--headless` | `true` | Run browser headlessly |
-| `--retries` | `3` | Retry count for nav failures |
-| `--nav-timeout-ms` | `45000` | Navigation timeout |
-| `--selector-timeout-ms` | `15000` | Selector wait timeout |
-| `--download-timeout-ms` | `90000` | Per-file download timeout |
-| `--page-wait-ms` | `800` | Wait after UI interactions |
-| `--short-wait-ms` | `200` | Short internal wait |
-| `--sleep-after-download-s` | `0.5` | Sleep between downloads |
+| Flag                          | Default         | Description                  |
+| ----------------------------- | --------------- | ---------------------------- |
+| `--start-year` / `--end-year` | required        | Year range (inclusive)       |
+| `--base-dir`                  | script-specific | Output directory root        |
+| `--headless`                  | `true`          | Run browser headlessly       |
+| `--retries`                   | `3`             | Retry count for nav failures |
+| `--nav-timeout-ms`            | `45000`         | Navigation timeout           |
+| `--selector-timeout-ms`       | `15000`         | Selector wait timeout        |
+| `--download-timeout-ms`       | `90000`         | Per-file download timeout    |
+| `--page-wait-ms`              | `800`           | Wait after UI interactions   |
+| `--short-wait-ms`             | `200`           | Short internal wait          |
+| `--sleep-after-download-s`    | `0.5`           | Sleep between downloads      |
 
 ## Running the RAG query
 
@@ -112,6 +115,7 @@ The `*_francais.py` scripts are canonical. Legacy scripts have hardcoded `START_
 ### Scraper navigation pattern
 
 The JORT site is a legacy WinDev/WebDev app with no public API. Each scraper:
+
 1. Navigates using named anchor selectors (`a[name="M7"]`, `a[name="A5"]`, etc.) — these differ per section and between AR/FR UI
 2. Selects a year from a `<select>` dropdown, submits search
 3. Paginates through result rows (`div[id^="A3_"]`), extracts issue number and date
@@ -123,24 +127,37 @@ Navigation is fragile — any site update could break selectors.
 ### scraper_common.py
 
 Shared module imported by all refactored scrapers:
+
 - `build_common_parser` / `validate_common_args` — shared CLI
 - Checkpoint system — JSON files in `outputs/checkpoints/` tracking downloaded/skipped/failed per file, enabling resume on interruption
 - `build_run_summary` — final summary dict printed as JSON to stdout
 
 Checkpoint JSON schema:
+
 ```json
 {
-  "script_name": "...", "start_year": 2024, "end_year": 2025,
+  "script_name": "...",
+  "start_year": 2024,
+  "end_year": 2025,
   "totals": { "downloaded": 0, "skipped": 0, "failed": 0 },
-  "files": [{ "issue_num": "001", "date_iso": "2024-01-05", "year": "2024",
-              "filename": "JORT_001_2024-01-05.pdf", "filepath": "pdfs/...",
-              "status": "downloaded", "error": "" }]
+  "files": [
+    {
+      "issue_num": "001",
+      "date_iso": "2024-01-05",
+      "year": "2024",
+      "filename": "JORT_001_2024-01-05.pdf",
+      "filepath": "pdfs/...",
+      "status": "downloaded",
+      "error": ""
+    }
+  ]
 }
 ```
 
 ### api.py
 
 FastAPI app wrapping scripts as fire-and-forget background jobs:
+
 - Jobs tracked in-memory (`_jobs` dict, protected by `threading.Lock`)
 - Subprocess launched with `CREATE_NEW_CONSOLE` so live output appears in a separate terminal window
 - Script exit code 0 → `done`; non-zero → `failed`
@@ -148,16 +165,16 @@ FastAPI app wrapping scripts as fire-and-forget background jobs:
 
 Available API script keys:
 
-| Key | Script |
-|-----|--------|
-| `lois_decrets_fr` | `scraping/download_journal_officiel_lois_decrets_decisions_avis_francais.py` |
-| `annonces_legales_fr` | `scraping/download_journal_officiel_annonces_legales_francais.py` |
-| `tribunal_foncier_fr` | `scraping/download_journal_officiel_tribunal_foncier_francais.py` |
-| `upload_gdrive` | `rclone copy pdfs/ gdrive:JORT/ --progress` |
-| `text_extraction` | `text_extraction/extract_text.py` |
-| `article_extraction` | `article_extraction/extract_articles.py` |
-| `embedding` | `embedding/embed_articles.py` |
-| `vector_storage` | `vector_storage/upsert_embeddings.py` |
+| Key                   | Script                                                                       |
+| --------------------- | ---------------------------------------------------------------------------- |
+| `lois_decrets_fr`     | `scraping/download_journal_officiel_lois_decrets_decisions_avis_francais.py` |
+| `annonces_legales_fr` | `scraping/download_journal_officiel_annonces_legales_francais.py`            |
+| `tribunal_foncier_fr` | `scraping/download_journal_officiel_tribunal_foncier_francais.py`            |
+| `upload_gdrive`       | `rclone copy pdfs/ gdrive:JORT/ --progress`                                  |
+| `text_extraction`     | `text_extraction/extract_text.py`                                            |
+| `article_extraction`  | `article_extraction/extract_articles.py`                                     |
+| `embedding`           | `embedding/embed_articles.py`                                                |
+| `vector_storage`      | `vector_storage/upsert_embeddings.py`                                        |
 
 ### n8n workflow orchestration
 

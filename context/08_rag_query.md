@@ -23,6 +23,7 @@ Provide a conversational interface over the JORT corpus stored in Qdrant. A user
 |------|------|
 | `rag/query.py` | Main script |
 | `BAAI/bge-m3` (via `FlagEmbedding.BGEM3FlagModel`) | Query embedding — same model as indexing |
+| `BAAI/bge-reranker-v2-m3` (via `FlagEmbedding.FlagReranker`) | Cross-encoder reranking of Qdrant candidates |
 | Qdrant `jort_articles_v2` | Hybrid vector search (dense + sparse, RRF) |
 | Ollama `qwen3:4b` | Local LLM for answer generation |
 | `ollama` Python SDK | Streaming chat API |
@@ -64,10 +65,12 @@ Key flags:
 |------|---------|-------------|
 | `question` | — | Question (positional arg; omit with `--interactive`) |
 | `--year` | — | Filter Qdrant results to a specific year |
-| `--top-k` | `5` | Number of articles to retrieve |
+| `--top-k` | `5` | Articles passed to the LLM; reranking fetches 20 first |
 | `--model` | `qwen3:4b` | Ollama model name |
 | `--qdrant-url` | `http://localhost:6333` | Qdrant base URL |
-| `--interactive` | `false` | Start an interactive Q&A loop |
+| `--interactive` | `false` | Start an interactive Q&A loop with conversation history |
+| `--no-rerank` | `false` | Skip cross-encoder reranking (faster, less precise) |
+| `--history-turns` | `5` | Past turns kept in LLM context in interactive mode; `0` = off |
 
 ## Architecture
 
@@ -83,16 +86,24 @@ bge-m3 query embedding      ← dense (1024-dim) + sparse (lexical weights)
      │
      ▼
 Qdrant hybrid search        ← jort_articles_v2
-  Prefetch dense  (limit = top_k × 4)
-  Prefetch sparse (limit = top_k × 4)
-  FusionQuery(RRF) → top_k results
+  Prefetch dense  (limit = 20 × 4 = 80 candidates)
+  Prefetch sparse (limit = 20 × 4 = 80 candidates)
+  FusionQuery(RRF) → 20 candidates
   Optional FieldCondition filter on "year" payload
      │
      ▼
+Cross-encoder reranking     ← BAAI/bge-reranker-v2-m3 (skip with --no-rerank)
+  Score each (question, article_text) pair jointly
+  compute_score(normalize=True) → sigmoid [0, 1]
+  Sort by reranker score → keep top_k (default 5)
+     │
+     ▼
 Context formatting          ← law ref + date + title + body per article
+                               score shown is reranker score (or RRF if --no-rerank)
      │
      ▼
 Prompt construction         ← bilingual system prompt (FR or AR)
+  + conversation history    ← plain Q&A pairs from prior turns (interactive mode)
   + retrieved articles as context
   + user question
      │
@@ -102,30 +113,34 @@ Ollama streaming call       ← temperature=0.1
      │
      ▼
 Streamed answer to stdout
+     │
+     ▼  (interactive mode only)
+Append (plain question, answer) to history
+  history trimmed to --history-turns × 2 messages
 ```
 
 ## Key Notes / Decisions
 
 - **Same embedding model as indexing.** `BAAI/bge-m3` is used at query time with the same `use_fp16=True` setting to ensure vector space compatibility.
 - **`FusionQuery(fusion=Fusion.RRF)` required, not `Fusion.RRF` directly.** In qdrant-client 1.17.x, passing `Fusion.RRF` directly to `query_points` serializes as `{"nearest": "rrf"}` (wrong) instead of `{"fusion": "rrf"}` (correct). Always use `FusionQuery(fusion=Fusion.RRF)`.
-- **Language is auto-detected per question.** Arabic Unicode character ratio > 20% → `'ar'`, otherwise `'fr'`. This selects the system prompt language and which content fields (`content_french` vs `content_arabic`, `title_french` vs `title_arabic`) are injected as context.
+- **Language is auto-detected per question.** Arabic Unicode character ratio > 20% → `'ar'`, otherwise `'fr'`. This selects the system prompt language, which content fields are injected as context (`content_french` vs `content_arabic`), and which field the reranker uses as the article text for scoring.
 - **Year filter is a Qdrant payload filter** on the indexed `year` keyword field. Passed as `query_filter=Filter(must=[FieldCondition(key="year", match=MatchValue(value=year))])`. **Gotcha:** the `year` field reflects the arrêté's own date, not the JORT issue date. An arrêté signed December 31, 2025 and published in JORT issue 001/2026 is tagged `year: "2025"` — filtering `--year 2026` will miss it.
 - **`<think>` token stripping.** `qwen3:4b` is a reasoning model that emits `<think>…</think>` blocks before the actual answer. The streaming loop buffers tokens and suppresses everything inside those tags so only the final answer is printed.
-- **Model loaded lazily.** `_get_model()` initialises `BGEM3FlagModel` only on the first query, so the CLI starts instantly.
-- **No conversation history (single-turn).** Each call to `_run_query` is stateless — a fresh retrieval and fresh message list. Multi-turn support would require passing `messages` across calls and re-retrieving on each turn.
+- **Both models loaded lazily.** `_get_model()` loads `BGEM3FlagModel` and `_get_reranker()` loads `FlagReranker` only on first use — the CLI starts instantly and the reranker doesn't load if `--no-rerank` is passed.
+- **Reranking fetches a wider candidate pool.** Without `--no-rerank`, Qdrant returns 20 candidates (instead of top_k=5 directly). The cross-encoder then scores each `(question, article_text)` pair jointly — seeing both texts at once — and the top 5 by reranker score are kept. Scores are normalized to [0,1] via sigmoid (`normalize=True`).
+- **Conversation history is plain Q&A, not article context.** In interactive mode, past turns are stored as `{"role": "user", "content": plain_question}` + `{"role": "assistant", "content": answer}` — the article context is *not* repeated in history to keep it compact. Fresh articles are retrieved for every new turn. History is trimmed to `--history-turns × 2` messages (default: 10 messages = 5 turns). History is only active in `--interactive` mode; single-shot queries always use an empty history.
 
 ## Next Steps
 
-- Add multi-turn conversation history (re-retrieve on each turn, append assistant reply to `messages`).
 - Expose as a FastAPI endpoint (`POST /legal_extraction/rag/query`) for integration with n8n or a frontend.
-- Evaluate answer quality across law types and years; tune `--top-k` and system prompt as needed.
+- Evaluate answer quality across law types and years; tune `--top-k`, `RERANK_CANDIDATE_K`, and system prompt as needed.
+- Run test suite in `rag/test_questions.md` to validate reranking and history behavior.
 
 ## Planned Improvements (priority order)
 
-### 1. Cross-encoder reranking *(highest impact)*
-After RRF returns top-k, run `BAAI/bge-reranker-v2-m3` (same FlagEmbedding library) on each
-(question, chunk) pair. Cross-encoders see both texts jointly and score relevance far more
-accurately than embedding similarity alone. Pattern: retrieve top-20, rerank, keep top-5.
+### 1. ✅ Cross-encoder reranking *(implemented)*
+`BAAI/bge-reranker-v2-m3` reranks the top-20 Qdrant candidates before passing top-5 to the LLM.
+Disable with `--no-rerank`. Both models are lazy-loaded; the reranker only loads when needed.
 
 ### 2. Query expansion / HyDE
 Ask the LLM to generate a *hypothetical answer* before embedding ("what would a legal article
@@ -133,10 +148,10 @@ answering this look like?"), then embed that instead of the raw question. Hypoth
 sit closer to real documents in embedding space — improves recall especially for short/vague
 questions.
 
-### 3. Conversation history
-Each `_run_query` call is stateless. Appending the previous turn's question + answer to the
-`messages` list enables follow-up questions ("et les sanctions?" / "what about penalties?") to
-resolve correctly.
+### 3. ✅ Conversation history *(implemented)*
+Interactive mode maintains a `history` list of plain Q&A pairs across turns. History is injected
+between the system prompt and the current user message. Capped at `--history-turns` (default 5).
+Fresh articles are retrieved on every turn — history does not carry over article context.
 
 ### 4. Metadata auto-filtering
 The payload has `law_type`, `legal_domains`, `has_obligations`, `has_penalties`, etc. A
@@ -149,13 +164,12 @@ chunking (e.g. 512 tokens, 128 overlap) would help — at the cost of more vecto
 
 ### 6. RRF score normalization for LLM context
 RRF scores are reciprocal-rank-based (~0.01–0.033 range), not cosine similarity. The LLM has
-no intuitive scale for these values. Options:
-- Normalize to 0–1 relative to the retrieved batch
-- Replace with rank labels (`[pertinence: 1/5]`, `[pertinence: 2/5]`)
-- Add a note in the system prompt explaining the scale
+no intuitive scale for these values. With reranking enabled this is partially addressed —
+scores shown to the LLM are now reranker scores in [0,1]. Without reranking (`--no-rerank`),
+RRF scores are still shown raw.
 
 ### 7. Confidence gating
-If all RRF scores are below a threshold, skip the LLM call entirely and return a
+If all reranker scores are below a threshold, skip the LLM call entirely and return a
 "no relevant articles found" message — avoids hallucinations on out-of-domain questions.
 
 ### 8. Source deduplication
