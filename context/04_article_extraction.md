@@ -21,22 +21,28 @@ json/
   Journal_Officiel_Tribunal_Foncier/<year>/JORT_TribunalFoncier_NNN_YYYY-MM-DD.json
 ```
 
-Each `.json` file is an array of article objects. Key fields per article:
+Each `.json` file is an array of article objects. Full schema per article:
 
 ```json
 [
   {
     "jurisdiction": "TUNISIA",
-    "institution": "Présidence du Gouvernement",
+    "institution": "Ministère des Finances",
     "law_type": "Arrêté",
-    "law_number": "2026-...",
-    "year": "2026",
+    "law_number": "",
+    "year": "2025",
     "status": "ACTIVE",
+
     "title_french": "...",
     "title_arabic": "...",
+    "chapter": "",
+    "chapter_normalized": "",
+    "section": "",
+
     "article_number": "Article 1",
     "article_order": 1,
-    "article_type": "REGULATORY",
+    "article_type": "PROCEDURAL",
+
     "content_french": "...",
     "content_arabic": "...",
     "content_combined": "...",
@@ -44,28 +50,54 @@ Each `.json` file is an array of article objects. Key fields per article:
     "summary_arabic": "...",
     "search_content": "...",
     "embedding_text": "...",
-    "keywords": [],
-    "legal_domains": [],
-    "legal_concepts": [],
-    "business_impact": "MEDIUM",
-    "target_audience": [],
+
+    "keywords": ["formation continue", "inspecteur central"],
+    "legal_domains": ["Droit Administratif", "Droit de la Fonction Publique"],
+    "legal_concepts": ["formation professionnelle", "accès au grade"],
+    "business_impact": "LOW",
+    "target_audience": ["Fonctionnaires", "Administrations publiques"],
     "related_laws": [],
+    "ambiguity_level": "LOW",
+
     "has_obligations": false,
     "has_penalties": false,
-    "has_deadlines": false,
+    "has_deadlines": true,
     "has_exceptions": false,
     "is_abrogation": false,
     "is_transitional": false,
+
+    "institution_primary": "Ministère des Finances",
+    "institution_secondary": "",
+    "institutions": ["Ministère des Finances", "Ecole nationale des finances"],
+
     "source_name": "JORT",
     "source_number": "",
-    "source_date": "",
-    "publication_date": "",
-    "effective_date": "",
-    "parent_document_id": "tn-jort-035-2026-04-03",
+    "source_url": "",
+    "source_date": "2025-12-31T00:00:00Z",
+    "publication_date": "2025-12-31T00:00:00Z",
+    "effective_date": "2025-12-31T00:00:00Z",
+
+    "relation_target_ids": [],
+    "relation_types": [],
+
+    "entity_names": ["Ministère des Finances", "Ecole nationale des finances"],
+    "entity_types": ["MINISTRY", "ORGANIZATION"],
+    "entity_ids": ["tn-org-ministere-des-finances", "tn-org-ecole-nationale-des-finances"],
+
+    "community_id": "fonction-publique-finances",
+    "community_label": "Fonction publique et finances",
+    "community_summary": "...",
+
+    "parent_document_id": "tn-jort-001-2026-01-02",
+    "preceding_article_id": "",
+    "following_article_id": "",
     "graph_level": 1,
     "version": 1,
-    "last_checked": "...",
-    "next_check": "..."
+    "repeal_date": "",
+    "superseded_by_id": "",
+    "supersedes_id": "",
+    "last_checked": "2026-04-05T00:00:00Z",
+    "next_check": "2026-10-02T00:00:00Z"
   }
 ]
 ```
@@ -178,8 +210,8 @@ Node 22 → Node 23 (IF extraction succeeded?)
                done/failed → Node 29 (notify result)
 ```
 
-## Next Steps
+## Improvements
 
-- Run on a sample issue and review article boundary detection quality.
-- Add API endpoint and n8n nodes for Phase 4 (mirrors Phase 3 pattern).
-- Evaluate whether `--delay` needs tuning to stay within Azure rate limits.
+- Review and tune article boundary detection for Annonces Légales and Tribunal Foncier sections — these differ structurally from Lois/Décrets and may need section-specific prompts.
+- Tune `--delay` per Azure deployment tier to maximize throughput without hitting rate limits.
+- Add Phase 5 (Validation & Scoring) to append a `validation` block to each article after extraction.

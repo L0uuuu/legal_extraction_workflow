@@ -107,7 +107,7 @@ Key flags:
 - **Per-page format.** Each page's text is separated by a `--- Page N ---` header in the output `.txt`. This preserves page boundaries for downstream parsing in Phase 4.
 - **SDK.** Uses `google-genai` (new SDK) via `genai.Client(vertexai=True, ...)`, not the deprecated `google-cloud-aiplatform` / `vertexai.generative_models`.
 
-## Next Steps
+## Improvements
 
-- Run a sample batch and check OCR quality on scanned issues.
-- Evaluate whether digital pages with tables need PyMuPDF table detection (`page.find_tables()`) or whether flat text is sufficient for Phase 4.
+- Add PyMuPDF table detection (`page.find_tables()`) for digital pages — currently tables on digital pages are extracted as flat text, which can confuse Phase 4 article extraction.
+- Tune `--min-text-len` and `--max-image-coverage` thresholds per journal section, as Annonces Légales issues tend to be more image-heavy than Lois/Décrets.

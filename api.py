@@ -30,6 +30,10 @@ Vector storage endpoints:
     POST /legal_extraction/vector_storage/run
     GET  /legal_extraction/vector_storage/jobs
 
+Validation endpoints (Phase 5 — not yet implemented):
+    POST /legal_extraction/validation/run        # TODO: implement validation/validate_articles.py
+    GET  /legal_extraction/validation/jobs
+
 Shared endpoints:
     GET  /legal_extraction/status/{job_id}
     GET  /legal_extraction/scripts
@@ -73,6 +77,8 @@ UPLOAD_SCRIPTS: dict[str, list[str]] = {
 
 TEXT_EXTRACTION_SCRIPT    = "text_extraction/extract_text.py"
 ARTICLE_EXTRACTION_SCRIPT = "article_extraction/extract_articles.py"
+# TODO (Phase 5): add VALIDATION_SCRIPT = "validation/validate_articles.py"
+# See context/05_validation_scoring.md for the full spec (two-layer rule-based + LLM scoring).
 EMBEDDING_SCRIPT          = "embedding/embed_articles.py"
 VECTOR_STORAGE_SCRIPT     = "vector_storage/upsert_embeddings.py"
 

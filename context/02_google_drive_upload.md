@@ -117,7 +117,7 @@ UPLOAD_SCRIPTS: dict[str, list[str]] = {
 - **rclone must be in PATH** for the API subprocess call to work. If not, use the full path to `rclone.exe` in the `UPLOAD_SCRIPTS` command list.
 - **Upload runs after scraping completes.** n8n routes the `done` output of the scraping check to Node 9 (run upload). If scraping fails, upload is skipped.
 
-## Next Steps
+## Improvements
 
-- Run `rclone copy pdfs/ gdrive:JORT/ --dry-run` to verify config before first real upload.
-- Test the full n8n workflow end-to-end once the IORT website is back online.
+- Support selective sync: upload only a specific `--section` or `--year` subfolder instead of the full `pdfs/` tree.
+- Add upload size/count reporting to the Telegram notification (rclone `--stats-one-line` output).

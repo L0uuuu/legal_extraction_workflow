@@ -997,7 +997,7 @@ Finished  : {{ $('see embedding status').item.json.finished_at }}
 
 Job ID     : {{ $('run vector storage').item.json.job_id }}
 Script     : vector\_storage
-Collection : jort\_articles
+Collection : jort\_articles\_v2
 ```
 
 **Connections:**

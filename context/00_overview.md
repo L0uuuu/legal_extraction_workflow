@@ -25,7 +25,7 @@ The pipeline's job is to take raw PDFs from `iort.gov.tn` and produce clean, str
 ┌─────────────┐     Google Drive:
 │  Phase 2    │     JORT/<section>/<year>/
 │  GDrive     │ ──► JORT_NNN_YYYY-MM-DD.pdf
-│  Upload     │     (via n8n, Docker)
+│  Upload     │     (via rclone + n8n)
 └─────────────┘
        │
        ▼
@@ -51,14 +51,14 @@ The pipeline's job is to take raw PDFs from `iort.gov.tn` and produce clean, str
        │
        ▼
 ┌─────────────┐     embeddings/<section>/<year>/
-│  Phase 6    │ ──► JORT_NNN_YYYY-MM-DD.embeddings.json (or .npy)
-│  Embedding  │     (per-article vectors)
+│  Phase 6    │ ──► JORT_NNN_YYYY-MM-DD.embeddings.json
+│  Embedding  │     (dense 1024-dim + sparse vectors)
 └─────────────┘
        │
        ▼
 ┌─────────────┐
-│  Phase 7    │ ──► Vector DB (TBD)
-│  Vector DB  │     (embeddings + metadata, searchable)
+│  Phase 7    │ ──► Qdrant `jort_articles_v2`
+│  Vector DB  │     (hybrid dense+sparse, searchable)
 │  Storage    │
 └─────────────┘
 ```
@@ -71,9 +71,9 @@ The pipeline's job is to take raw PDFs from `iort.gov.tn` and produce clean, str
 | 2 | Google Drive Upload | ✅ Done | `pdfs/` PDFs | GDrive folder tree | rclone + n8n |
 | 3 | Text Extraction | 🔁 Done (may revisit) | PDFs | `txt/` plain text | PyMuPDF + Gemini |
 | 4 | Article Extraction | 🔁 Done (may revisit) | `txt/` text | `json/` structured records | Azure OpenAI (gpt-4.1) |
-| 5 | Validation & Scoring | 🔲 Placeholder | `json/` records | `json/` + validation block | Python (TBD) |
+| 5 | Validation & Scoring | 🔲 Planned | `json/` records | `json/` + validation block | Python + Azure OpenAI (gpt-4.1) |
 | 6 | Embedding | ✅ Done | `json/` articles | `embeddings/` vectors | BAAI/bge-m3 (local) |
-| 7 | Vector DB Storage | ✅ Done | `embeddings/` vectors | Qdrant `jort_articles` collection | Qdrant (Docker) |
+| 7 | Vector DB Storage | ✅ Done | `embeddings/` vectors | Qdrant `jort_articles_v2` | Qdrant (Docker) |
 
 ## Journal Sections Covered
 
@@ -93,6 +93,8 @@ legal_extraction_workflow/
 ├── scraping/                   # Phase 1 — scrapers + shared lib
 ├── text_extraction/            # Phase 3 — PDF-to-text script
 ├── article_extraction/         # Phase 4 — article extraction script
+├── validation/                 # Phase 5 — validation & scoring (planned)
+│   └── validate_articles.py
 ├── embedding/                  # Phase 6 — embedding script
 ├── vector_storage/             # Phase 7 — Qdrant insertion script
 ├── rag/                        # RAG query layer (post-pipeline)
@@ -104,7 +106,7 @@ legal_extraction_workflow/
 │   ├── json/                   # Phase 4 — structured articles
 │   ├── embeddings/             # Phase 6 — embedding vectors
 │   └── checkpoints/            # Resume state for all phases
-├── api.py                      # FastAPI server
+├── api.py                      # FastAPI server (all phases)
 ├── requirements.txt
 └── context/                    # Project documentation (this folder)
 ```

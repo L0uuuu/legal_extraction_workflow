@@ -130,48 +130,22 @@ Append (plain question, answer) to history
 - **Reranking fetches a wider candidate pool.** Without `--no-rerank`, Qdrant returns 20 candidates (instead of top_k=5 directly). The cross-encoder then scores each `(question, article_text)` pair jointly — seeing both texts at once — and the top 5 by reranker score are kept. Scores are normalized to [0,1] via sigmoid (`normalize=True`).
 - **Conversation history is plain Q&A, not article context.** In interactive mode, past turns are stored as `{"role": "user", "content": plain_question}` + `{"role": "assistant", "content": answer}` — the article context is *not* repeated in history to keep it compact. Fresh articles are retrieved for every new turn. History is trimmed to `--history-turns × 2` messages (default: 10 messages = 5 turns). History is only active in `--interactive` mode; single-shot queries always use an empty history.
 
-## Next Steps
+## Improvements
 
-- Expose as a FastAPI endpoint (`POST /legal_extraction/rag/query`) for integration with n8n or a frontend.
-- Evaluate answer quality across law types and years; tune `--top-k`, `RERANK_CANDIDATE_K`, and system prompt as needed.
-- Run test suite in `rag/test_questions.md` to validate reranking and history behavior.
-
-## Planned Improvements (priority order)
-
-### 1. ✅ Cross-encoder reranking *(implemented)*
-`BAAI/bge-reranker-v2-m3` reranks the top-20 Qdrant candidates before passing top-5 to the LLM.
-Disable with `--no-rerank`. Both models are lazy-loaded; the reranker only loads when needed.
+### 1. FastAPI endpoint
+Expose as `POST /legal_extraction/rag/query` for integration with n8n or a frontend chatbot UI.
 
 ### 2. Query expansion / HyDE
-Ask the LLM to generate a *hypothetical answer* before embedding ("what would a legal article
-answering this look like?"), then embed that instead of the raw question. Hypothetical documents
-sit closer to real documents in embedding space — improves recall especially for short/vague
-questions.
+Ask the LLM to generate a *hypothetical answer* before embedding ("what would a legal article answering this look like?"), then embed that instead of the raw question. Hypothetical documents sit closer to real articles in embedding space — improves recall for short or vague questions.
 
-### 3. ✅ Conversation history *(implemented)*
-Interactive mode maintains a `history` list of plain Q&A pairs across turns. History is injected
-between the system prompt and the current user message. Capped at `--history-turns` (default 5).
-Fresh articles are retrieved on every turn — history does not carry over article context.
+### 3. Metadata auto-filtering
+The payload has `law_type`, `legal_domains`, `has_obligations`, `has_penalties`, etc. A lightweight classifier on the question could auto-select Qdrant filters before retrieval — e.g. detect "décret" in the question → add `FieldCondition(key="law_type", match="Décret")`.
 
-### 4. Metadata auto-filtering
-The payload has `law_type`, `legal_domains`, `has_obligations`, `has_penalties`, etc. A
-lightweight classifier on the question could auto-select Qdrant filters before retrieval —
-e.g. detect "décret" in the question → add `FieldCondition(key="law_type", match="Décret")`.
+### 4. Chunking strategy
+Articles are currently indexed whole. Long articles dilute retrieval precision. Sliding-window chunking (e.g. 512 tokens, 128 overlap) would improve precision — at the cost of more vectors in Qdrant.
 
-### 5. Chunking strategy
-Articles are currently indexed whole. Long articles dilute retrieval precision. Sliding-window
-chunking (e.g. 512 tokens, 128 overlap) would help — at the cost of more vectors in Qdrant.
+### 5. Confidence gating
+If all reranker scores are below a threshold, skip the LLM call entirely and return a "no relevant articles found" message — avoids hallucinations on out-of-domain questions.
 
-### 6. RRF score normalization for LLM context
-RRF scores are reciprocal-rank-based (~0.01–0.033 range), not cosine similarity. The LLM has
-no intuitive scale for these values. With reranking enabled this is partially addressed —
-scores shown to the LLM are now reranker scores in [0,1]. Without reranking (`--no-rerank`),
-RRF scores are still shown raw.
-
-### 7. Confidence gating
-If all reranker scores are below a threshold, skip the LLM call entirely and return a
-"no relevant articles found" message — avoids hallucinations on out-of-domain questions.
-
-### 8. Source deduplication
-If two chunks share the same `parent_document_id`, keep only the highest-scoring one to avoid
-the LLM seeing near-identical context twice.
+### 6. Source deduplication
+If two results share the same `parent_document_id`, keep only the highest-scoring one to avoid the LLM seeing near-identical context twice.

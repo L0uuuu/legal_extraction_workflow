@@ -143,7 +143,7 @@ Include `embeddings` for single-file testing; omit for full batch. Poll with `GE
 
 ## n8n nodes
 
-Nodes 37–43 handle vector storage after embedding succeeds (to be added):
+Nodes 37–43 handle vector storage after embedding succeeds:
 
 ```
 Node 36 → Node 37 (IF embedding succeeded?)

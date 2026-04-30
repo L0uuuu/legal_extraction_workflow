@@ -1,6 +1,6 @@
 # JORT Workflow API Documentation
 
-FastAPI server that wraps the scraping, upload, text extraction, article extraction, and embedding scripts so n8n can trigger them via HTTP.
+FastAPI server that wraps all pipeline phases — scraping, Google Drive upload, text extraction, article extraction, validation (planned), embedding, and vector storage — so n8n can trigger them via HTTP and poll their status.
 
 **Start the server (from repo root):**
 ```bash
@@ -156,6 +156,33 @@ List all article extraction jobs, most recent first.
 
 ---
 
+## Validation endpoints (Phase 5 — not yet implemented)
+
+### `POST /legal_extraction/validation/run`
+
+> **Not yet implemented.** See `validation/validate_articles.py` and `context/05_validation_scoring.md` for the planned spec.
+
+Will run two-layer validation on Phase 4 JSON output — rule-based checks (field presence, body length, OCR quality, date format, language consistency) followed by an optional LLM semantic check for borderline articles. Appends a `validation` block to each article in-place.
+
+**Planned request body (all fields optional):**
+```json
+{
+  "json":      "json/.../2026/JORT_001_2026-01-02.json",
+  "json_dir":  "json",
+  "threshold": 0.75,
+  "no_llm":    false,
+  "delay":     1000
+}
+```
+
+---
+
+### `GET /legal_extraction/validation/jobs`
+
+> **Not yet implemented.**
+
+---
+
 ## Embedding endpoints
 
 ### `POST /legal_extraction/embedding/run`
@@ -244,7 +271,7 @@ List all vector storage jobs, most recent first.
 
 ### `GET /legal_extraction/status/{job_id}`
 
-Poll the status of any job (scraping, upload, or text extraction).
+Poll the status of any job from any phase (scraping, upload, text extraction, article extraction, embedding, or vector storage).
 
 **Response:**
 ```json

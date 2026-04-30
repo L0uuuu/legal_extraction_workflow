@@ -55,9 +55,9 @@ scraping/
   download_journal_officiel_lois_decrets_decisions_avis.py  ← legacy AR
   download_journal_officiel_lois_decrets_decisions_avis_francais.py  ← refactored FR
   download_journal_officiel_annonces_legales.py             ← legacy AR
-  download_journal_officiel_annonces_legales_francais.py    ← refactored FR (partial)
+  download_journal_officiel_annonces_legales_francais.py    ← refactored FR ✓
   download_journal_officiel_tribunal_foncier.py             ← legacy AR
-  download_journal_officiel_tribunal_foncier_francais.py    ← refactored FR (partial)
+  download_journal_officiel_tribunal_foncier_francais.py    ← refactored FR ✓
 ```
 
 ## Key Notes / Decisions
@@ -92,7 +92,7 @@ The API launches the scraper script in a **new terminal window** (`CREATE_NEW_CO
 
 n8n polls the status endpoint every 10 seconds and loops back to Wait until the job is terminal. See `claude context/n8n_workflow_nodes.md` for the full node setup.
 
-## Next Steps
+## Improvements
 
-- Migrate remaining legacy scripts (AR variants) to the refactored pattern if resumability is needed for them.
-- Consider adding a `--dry-run` flag to `scraper_common` for testing navigation without downloading.
+- Migrate legacy AR scripts (`download_journal_officiel_*.py`) to the refactored pattern (CLI args, headless mode, checkpoints) if resumability is needed for them.
+- Add a `--dry-run` flag to `scraper_common` for testing navigation without actually downloading files.
