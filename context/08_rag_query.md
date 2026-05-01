@@ -71,6 +71,7 @@ Key flags:
 | `--interactive` | `false` | Start an interactive Q&A loop with conversation history |
 | `--no-rerank` | `false` | Skip cross-encoder reranking (faster, less precise) |
 | `--history-turns` | `5` | Past turns kept in LLM context in interactive mode; `0` = off |
+| `--confidence-threshold` | `0.4` | Min reranker score to call the LLM; below this returns "no relevant articles" (ignored with `--no-rerank`) |
 
 ## Architecture
 
@@ -144,8 +145,8 @@ The payload has `law_type`, `legal_domains`, `has_obligations`, `has_penalties`,
 ### 4. Chunking strategy
 Articles are currently indexed whole. Long articles dilute retrieval precision. Sliding-window chunking (e.g. 512 tokens, 128 overlap) would improve precision — at the cost of more vectors in Qdrant.
 
-### 5. Confidence gating
-If all reranker scores are below a threshold, skip the LLM call entirely and return a "no relevant articles found" message — avoids hallucinations on out-of-domain questions.
+### 5. ✅ Confidence gating *(implemented)*
+If the best reranker score is below `--confidence-threshold` (default 0.4), the LLM call is skipped entirely and a bilingual "no relevant articles found" message is returned. Only active when reranking is enabled — ignored with `--no-rerank` since RRF scores are not normalized.
 
 ### 6. Source deduplication
 If two results share the same `parent_document_id`, keep only the highest-scoring one to avoid the LLM seeing near-identical context twice.

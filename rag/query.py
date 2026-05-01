@@ -32,9 +32,10 @@ COLLECTION         = "jort_articles_v2"
 QDRANT_URL         = "http://localhost:6333"
 OLLAMA_MODEL       = "qwen3.5:4b"
 TOP_K              = 5
-RERANK_CANDIDATE_K = 20   # candidates fetched before reranking
-MAX_HISTORY_TURNS  = 5    # conversation turns kept in context (each turn = 1 Q + 1 A)
-QUERY_MAX_LEN      = 512  # shorter than indexing — queries don't need 8192 tokens
+RERANK_CANDIDATE_K   = 20   # candidates fetched before reranking
+MAX_HISTORY_TURNS    = 5    # conversation turns kept in context (each turn = 1 Q + 1 A)
+QUERY_MAX_LEN        = 512  # shorter than indexing — queries don't need 8192 tokens
+CONFIDENCE_THRESHOLD = 0.4  # reranker score below this → skip LLM, return "no relevant articles"
 
 # ---------------------------------------------------------------------------
 # Language detection
@@ -289,6 +290,17 @@ def _run_query(
         articles = _rerank(question, articles, lang, args.top_k)
         print(f"[rag] {len(articles)} article(s) kept after reranking.")
 
+        best_score = max(score for _, score in articles)
+        if best_score < args.confidence_threshold:
+            print(f"[rag] Best score {best_score:.3f} below threshold {args.confidence_threshold} — no relevant articles found.")
+            no_answer = (
+                "Je n'ai pas trouvé d'articles suffisamment pertinents pour répondre à cette question."
+                if lang == "fr" else
+                "لم أجد مقالات ذات صلة كافية للإجابة على هذا السؤال."
+            )
+            print(f"\n{no_answer}")
+            return no_answer
+
     print("[rag] Sources:")
     for i, (a, score) in enumerate(articles, 1):
         ref  = f"{a.get('law_type', '')} {a.get('law_number', '')}".strip() or "—"
@@ -338,6 +350,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--history-turns", type=int, default=MAX_HISTORY_TURNS,
         help=f"Max past turns kept in LLM context in interactive mode (default: {MAX_HISTORY_TURNS}; 0 = off)",
+    )
+    p.add_argument(
+        "--confidence-threshold", type=float, default=CONFIDENCE_THRESHOLD,
+        help=f"Minimum reranker score to call the LLM (default: {CONFIDENCE_THRESHOLD}); ignored with --no-rerank",
     )
     return p
 
