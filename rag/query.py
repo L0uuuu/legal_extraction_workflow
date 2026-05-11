@@ -30,12 +30,13 @@ MODEL_NAME         = "BAAI/bge-m3"
 RERANKER_NAME      = "BAAI/bge-reranker-v2-m3"
 COLLECTION         = "jort_articles_v2"
 QDRANT_URL         = "http://localhost:6333"
-OLLAMA_MODEL       = "qwen3.5:4b"
-TOP_K              = 5
-RERANK_CANDIDATE_K   = 20   # candidates fetched before reranking
+OLLAMA_MODEL       = "etafakna"
+TOP_K              = 3
+RERANK_CANDIDATE_K   = 10   # candidates fetched before reranking
 MAX_HISTORY_TURNS    = 5    # conversation turns kept in context (each turn = 1 Q + 1 A)
 QUERY_MAX_LEN        = 512  # shorter than indexing — queries don't need 8192 tokens
 CONFIDENCE_THRESHOLD = 0.4  # reranker score below this → skip LLM, return "no relevant articles"
+USE_SYSTEM_PROMPT    = True  # set to False to rely on the modelfile's baked-in SYSTEM instead
 
 # ---------------------------------------------------------------------------
 # Language detection
@@ -147,35 +148,38 @@ def _search(
 # ---------------------------------------------------------------------------
 
 _SYSTEM_FR = """\
-Tu es un assistant juridique expert.
-Tu réponds UNIQUEMENT à partir des articles juridiques fournis ci-dessous, extraits d'une base de connaissances légale.
-Chaque article est accompagné d'un score de similarité (entre 0 et 1) indiquant sa pertinence par rapport à la question.
-Accorde plus de poids aux articles avec un score élevé. Si les scores sont globalement faibles, signale que les résultats sont peu pertinents.
-Si la réponse ne peut pas être déduite de ces articles, dis-le clairement.
-Cite toujours la référence exacte : type d'acte, numéro, et date de publication."""
+Vous êtes E-Tafakna, un assistant juridique spécialisé dans le droit tunisien.
+- Si des documents sont fournis, basez votre réponse dessus et citez toujours les articles et sources.
+- Si la question concerne un service (rédaction de contrat, consultation, etc.), orientez l'utilisateur vers le service approprié.
+- Si aucun document pertinent n'est disponible, dites-le clairement et recommandez de consulter un professionnel.
+- Répondez toujours dans la langue de l'utilisateur (français ou arabe).
+- Ceci ne constitue pas un avis juridique professionnel."""
 
 _SYSTEM_AR = """\
-أنت مساعد قانوني متخصص.
-تجيب فقط استناداً إلى المقالات القانونية المقدمة أدناه، المستخرجة من قاعدة معرفة قانونية.
-كل مقال مرفق بدرجة تشابه (بين 0 و1) تشير إلى مدى صلته بالسؤال.
-أعطِ وزناً أكبر للمقالات ذات الدرجة المرتفعة. إذا كانت الدرجات منخفضة بشكل عام، نبّه إلى أن النتائج قد لا تكون وثيقة الصلة.
-إذا تعذّر استنتاج الإجابة من هذه المقالات، صرّح بذلك بوضوح.
-اذكر دائماً المرجع الدقيق: نوع الإجراء، رقمه، وتاريخ نشره."""
+أنت E-Tafakna، مساعد قانوني متخصص في القانون التونسي.
+- إذا تم توفير وثائق، استند إليها في إجابتك واذكر دائماً المراجع والمصادر.
+- إذا كان السؤال يتعلق بخدمة (صياغة عقد، استشارة، إلخ)، وجّه المستخدم إلى الخدمة المناسبة.
+- إذا لم تتوفر وثائق ذات صلة، صرّح بذلك بوضوح وأوصِ باستشارة متخصص.
+- أجب دائماً بلغة المستخدم (العربية أو الفرنسية).
+- هذا لا يُعدّ رأياً قانونياً مهنياً."""
 
 
 def _format_context(articles: list[tuple[dict, float]], lang: str) -> str:
     parts = []
     for i, (a, score) in enumerate(articles, 1):
-        law_type   = a.get("law_type", "")
-        law_number = a.get("law_number", "")
-        ref        = f"{law_type} {law_number}".strip() or "—"
-        date       = a.get("source_date") or a.get("publication_date", "—")
+        law_type      = a.get("law_type", "")
+        law_number    = a.get("law_number", "")
+        article_number = a.get("article_number", "")
+        ref           = f"{law_type} {law_number}".strip() or "—"
+        if article_number:
+            ref = f"article {article_number} du {ref}"
+        date          = a.get("source_date") or a.get("publication_date", "—")
         title_key  = "title_french" if lang == "fr" else "title_arabic"
         body_key   = "content_french" if lang == "fr" else "content_arabic"
         title = a.get(title_key) or a.get("title_french", "—")
         body  = a.get(body_key)  or a.get("embedding_text", "—")
         parts.append(
-            f"[Article {i}]  (similarité : {score:.3f})\n"
+            f"[{i}]  (similarité : {score:.3f})\n"
             f"Référence : {ref}  |  Date : {date}\n"
             f"Titre : {title}\n"
             f"{body}"
@@ -188,26 +192,31 @@ def _build_messages(
     context: str,
     lang: str,
     history: list[dict],
+    use_system_prompt: bool = True,
 ) -> list[dict]:
     """
     Build the full message list:  [system]  +  history  +  [current user turn with context].
     History contains plain Q&A pairs (no article context) to keep it compact.
+    Pass use_system_prompt=False (or --no-system-prompt) to rely on the modelfile's baked-in SYSTEM.
     """
-    system = _SYSTEM_FR if lang == "fr" else _SYSTEM_AR
     if lang == "fr":
         user_content = (
-            f"Articles juridiques pertinents :\n\n{context}\n\n"
-            f"Question : {question}"
+            f"Question : {question}\n\n"
+            f"Documents pertinents :\n\n{context}"
         )
     else:
         user_content = (
-            f"المقالات القانونية ذات الصلة:\n\n{context}\n\n"
-            f"السؤال: {question}"
+            f"السؤال: {question}\n\n"
+            f"Documents pertinents :\n\n{context}"
         )
+    system_msg = (
+        [{"role": "system", "content": _SYSTEM_FR if lang == "fr" else _SYSTEM_AR}]
+        if use_system_prompt else []
+    )
     return [
-        {"role": "system", "content": system},
+        *system_msg,
         *history,
-        {"role": "user",   "content": user_content},
+        {"role": "user", "content": user_content},
     ]
 
 # ---------------------------------------------------------------------------
@@ -292,14 +301,8 @@ def _run_query(
 
         best_score = max(score for _, score in articles)
         if best_score < args.confidence_threshold:
-            print(f"[rag] Best score {best_score:.3f} below threshold {args.confidence_threshold} — no relevant articles found.")
-            no_answer = (
-                "Je n'ai pas trouvé d'articles suffisamment pertinents pour répondre à cette question."
-                if lang == "fr" else
-                "لم أجد مقالات ذات صلة كافية للإجابة على هذا السؤال."
-            )
-            print(f"\n{no_answer}")
-            return no_answer
+            print(f"[rag] Best score {best_score:.3f} below threshold {args.confidence_threshold} — passing empty context to model.")
+            articles = []
 
     print("[rag] Sources:")
     for i, (a, score) in enumerate(articles, 1):
@@ -308,7 +311,7 @@ def _run_query(
         print(f"       {i}. {ref}  ({date})  [score: {score:.3f}]")
 
     context  = _format_context(articles, lang)
-    messages = _build_messages(question, context, lang, history)
+    messages = _build_messages(question, context, lang, history, use_system_prompt=USE_SYSTEM_PROMPT and not args.no_system_prompt)
     return _ask_ollama(messages, model=args.model)
 
 # ---------------------------------------------------------------------------
@@ -355,6 +358,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--confidence-threshold", type=float, default=CONFIDENCE_THRESHOLD,
         help=f"Minimum reranker score to call the LLM (default: {CONFIDENCE_THRESHOLD}); ignored with --no-rerank",
     )
+    p.add_argument(
+        "--no-system-prompt", action="store_true",
+        help="Skip the code-side system prompt and rely on the modelfile's baked-in SYSTEM instead",
+    )
     return p
 
 
@@ -363,6 +370,9 @@ def main() -> None:
     client = QdrantClient(url=args.qdrant_url)
 
     if args.interactive:
+        _get_model()
+        if not args.no_rerank:
+            _get_reranker()
         history: list[dict] = []
         rerank_label = (
             "off" if args.no_rerank

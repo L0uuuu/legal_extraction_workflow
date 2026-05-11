@@ -4,7 +4,7 @@
 
 ## Goal
 
-Provide a conversational interface over the JORT corpus stored in Qdrant. A user types a question in French or Arabic; the system retrieves the most relevant legal articles via hybrid semantic search and streams a grounded answer from a local LLM (Ollama `qwen3:4b`).
+Provide a conversational interface over the JORT corpus stored in Qdrant. A user types a question in French or Arabic; the system retrieves the most relevant legal articles via hybrid semantic search and streams a grounded answer from a fine-tuned local LLM (Ollama `etafakna`, based on Gemma 4).
 
 ## Inputs
 
@@ -25,7 +25,7 @@ Provide a conversational interface over the JORT corpus stored in Qdrant. A user
 | `BAAI/bge-m3` (via `FlagEmbedding.BGEM3FlagModel`) | Query embedding — same model as indexing |
 | `BAAI/bge-reranker-v2-m3` (via `FlagEmbedding.FlagReranker`) | Cross-encoder reranking of Qdrant candidates |
 | Qdrant `jort_articles_v2` | Hybrid vector search (dense + sparse, RRF) |
-| Ollama `qwen3:4b` | Local LLM for answer generation |
+| Ollama `etafakna` (fine-tuned Gemma 4) | Local LLM for answer generation |
 | `ollama` Python SDK | Streaming chat API |
 
 ## Folder / File Structure
@@ -43,7 +43,7 @@ No output files — answers are streamed to stdout.
 # Prerequisites
 docker start qdrant          # Qdrant must be running
 ollama serve                 # Ollama must be running
-ollama pull qwen3:4b         # model must be pulled
+ollama run etafakna          # model must be available locally
 
 # Single question (French)
 python rag/query.py "Quelles sont les obligations des employeurs en matière de sécurité?"
@@ -65,13 +65,14 @@ Key flags:
 |------|---------|-------------|
 | `question` | — | Question (positional arg; omit with `--interactive`) |
 | `--year` | — | Filter Qdrant results to a specific year |
-| `--top-k` | `5` | Articles passed to the LLM; reranking fetches 20 first |
-| `--model` | `qwen3:4b` | Ollama model name |
+| `--top-k` | `3` | Articles passed to the LLM; reranking fetches 10 first |
+| `--model` | `etafakna` | Ollama model name |
 | `--qdrant-url` | `http://localhost:6333` | Qdrant base URL |
 | `--interactive` | `false` | Start an interactive Q&A loop with conversation history |
 | `--no-rerank` | `false` | Skip cross-encoder reranking (faster, less precise) |
 | `--history-turns` | `5` | Past turns kept in LLM context in interactive mode; `0` = off |
 | `--confidence-threshold` | `0.4` | Min reranker score to call the LLM; below this returns "no relevant articles" (ignored with `--no-rerank`) |
+| `--no-system-prompt` | `false` | Skip the code-side system prompt; relies on the modelfile's baked-in SYSTEM instead (also controlled by `USE_SYSTEM_PROMPT` constant) |
 
 ## Architecture
 
@@ -87,30 +88,30 @@ bge-m3 query embedding      ← dense (1024-dim) + sparse (lexical weights)
      │
      ▼
 Qdrant hybrid search        ← jort_articles_v2
-  Prefetch dense  (limit = 20 × 4 = 80 candidates)
-  Prefetch sparse (limit = 20 × 4 = 80 candidates)
-  FusionQuery(RRF) → 20 candidates
+  Prefetch dense  (limit = 10 × 4 = 40 candidates)
+  Prefetch sparse (limit = 10 × 4 = 40 candidates)
+  FusionQuery(RRF) → 10 candidates
   Optional FieldCondition filter on "year" payload
      │
      ▼
 Cross-encoder reranking     ← BAAI/bge-reranker-v2-m3 (skip with --no-rerank)
   Score each (question, article_text) pair jointly
   compute_score(normalize=True) → sigmoid [0, 1]
-  Sort by reranker score → keep top_k (default 5)
+  Sort by reranker score → keep top_k (default 3)
      │
      ▼
-Context formatting          ← law ref + date + title + body per article
+Context formatting          ← article_number + law ref + date + title + body per article
+                               numbered [1], [2], [3] — matches fine-tuning data format
                                score shown is reranker score (or RRF if --no-rerank)
      │
      ▼
-Prompt construction         ← bilingual system prompt (FR or AR)
+Prompt construction         ← optional code-side system prompt (USE_SYSTEM_PROMPT / --no-system-prompt)
   + conversation history    ← plain Q&A pairs from prior turns (interactive mode)
-  + retrieved articles as context
-  + user question
+  + user turn: "Question: ..." then "Documents pertinents:" + articles
      │
      ▼
 Ollama streaming call       ← temperature=0.1
-  <think>…</think> tokens stripped on the fly (qwen3 thinking model)
+  <think>…</think> tokens stripped on the fly (kept for compatibility)
      │
      ▼
 Streamed answer to stdout
@@ -124,11 +125,13 @@ Append (plain question, answer) to history
 
 - **Same embedding model as indexing.** `BAAI/bge-m3` is used at query time with the same `use_fp16=True` setting to ensure vector space compatibility.
 - **`FusionQuery(fusion=Fusion.RRF)` required, not `Fusion.RRF` directly.** In qdrant-client 1.17.x, passing `Fusion.RRF` directly to `query_points` serializes as `{"nearest": "rrf"}` (wrong) instead of `{"fusion": "rrf"}` (correct). Always use `FusionQuery(fusion=Fusion.RRF)`.
-- **Language is auto-detected per question.** Arabic Unicode character ratio > 20% → `'ar'`, otherwise `'fr'`. This selects the system prompt language, which content fields are injected as context (`content_french` vs `content_arabic`), and which field the reranker uses as the article text for scoring.
+- **Language is auto-detected per question.** Arabic Unicode character ratio > 20% → `'ar'`, otherwise `'fr'`. This selects which content fields are injected as context (`content_french` vs `content_arabic`) and which field the reranker uses for scoring. The system prompt language follows the same detection when `USE_SYSTEM_PROMPT = True`.
+- **Prompt format matches fine-tuning data.** The user turn is structured as `Question: …\n\nDocuments pertinents:\n\n[1] …\n[2] …` — the exact format used in the `etafakna` training dataset. The `article_number` field is prepended to the law reference (`article 2 du Décret 2024-123`) to mirror the training source citations.
+- **System prompt is off by default (`USE_SYSTEM_PROMPT = False`).** `etafakna` has the E-Tafakna legal assistant persona baked into its modelfile SYSTEM. Sending an additional system message via the API would override it. Set `USE_SYSTEM_PROMPT = True` or omit `--no-system-prompt` only when switching to a generic model.
 - **Year filter is a Qdrant payload filter** on the indexed `year` keyword field. Passed as `query_filter=Filter(must=[FieldCondition(key="year", match=MatchValue(value=year))])`. **Gotcha:** the `year` field reflects the arrêté's own date, not the JORT issue date. An arrêté signed December 31, 2025 and published in JORT issue 001/2026 is tagged `year: "2025"` — filtering `--year 2026` will miss it.
-- **`<think>` token stripping.** `qwen3:4b` is a reasoning model that emits `<think>…</think>` blocks before the actual answer. The streaming loop buffers tokens and suppresses everything inside those tags so only the final answer is printed.
+- **`<think>` token stripping.** The streaming loop suppresses `<think>…</think>` blocks. `etafakna` (Gemma 4) does not emit these, so the logic is currently a no-op but kept for compatibility if the model changes.
 - **Both models loaded lazily.** `_get_model()` loads `BGEM3FlagModel` and `_get_reranker()` loads `FlagReranker` only on first use — the CLI starts instantly and the reranker doesn't load if `--no-rerank` is passed.
-- **Reranking fetches a wider candidate pool.** Without `--no-rerank`, Qdrant returns 20 candidates (instead of top_k=5 directly). The cross-encoder then scores each `(question, article_text)` pair jointly — seeing both texts at once — and the top 5 by reranker score are kept. Scores are normalized to [0,1] via sigmoid (`normalize=True`).
+- **Reranking fetches a wider candidate pool.** Without `--no-rerank`, Qdrant returns 20 candidates (instead of top_k=3 directly). The cross-encoder then scores each `(question, article_text)` pair jointly — seeing both texts at once — and the top 3 by reranker score are kept. Scores are normalized to [0,1] via sigmoid (`normalize=True`).
 - **Conversation history is plain Q&A, not article context.** In interactive mode, past turns are stored as `{"role": "user", "content": plain_question}` + `{"role": "assistant", "content": answer}` — the article context is *not* repeated in history to keep it compact. Fresh articles are retrieved for every new turn. History is trimmed to `--history-turns × 2` messages (default: 10 messages = 5 turns). History is only active in `--interactive` mode; single-shot queries always use an empty history.
 
 ## Improvements
