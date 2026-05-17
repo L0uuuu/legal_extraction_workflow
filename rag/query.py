@@ -58,7 +58,7 @@ def _get_model():
     if _model is None:
         print("[rag] Loading BAAI/bge-m3 (fp16) …", flush=True)
         from FlagEmbedding import BGEM3FlagModel
-        _model = BGEM3FlagModel(MODEL_NAME, use_fp16=True)
+        _model = BGEM3FlagModel(MODEL_NAME, use_fp16=True, device="cpu")
         print("[rag] Embedder ready.", flush=True)
     return _model
 
@@ -91,7 +91,7 @@ def _get_reranker():
     if _reranker is None:
         print("[rag] Loading BAAI/bge-reranker-v2-m3 (fp16) …", flush=True)
         from FlagEmbedding import FlagReranker
-        _reranker = FlagReranker(RERANKER_NAME, use_fp16=True)
+        _reranker = FlagReranker(RERANKER_NAME, use_fp16=True, device="cpu")
         print("[rag] Reranker ready.", flush=True)
     return _reranker
 
@@ -201,13 +201,15 @@ def _build_messages(
     """
     if lang == "fr":
         user_content = (
-            f"Question : {question}\n\n"
-            f"Documents pertinents :\n\n{context}"
+            f"Question : {question}\n\nDocuments pertinents :\n\n{context}"
+            if context else
+            f"Question : {question}\n\nDocuments pertinents :\n\nAucun article pertinent trouvé."
         )
     else:
         user_content = (
-            f"السؤال: {question}\n\n"
-            f"Documents pertinents :\n\n{context}"
+            f"السؤال: {question}\n\nDocuments pertinents :\n\n{context}"
+            if context else
+            f"السؤال: {question}\n\nDocuments pertinents :\n\nلم يتم العثور على مقالات ذات صلة."
         )
     system_msg = (
         [{"role": "system", "content": _SYSTEM_FR if lang == "fr" else _SYSTEM_AR}]
@@ -227,7 +229,7 @@ def _build_messages(
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
-def _ask_ollama(messages: list[dict], model: str) -> str:
+def _ask_ollama(messages: list[dict], model: str, keep_alive: int = 300) -> str:
     """Stream the LLM answer to stdout; return the full answer text."""
     import ollama
 
@@ -242,6 +244,7 @@ def _ask_ollama(messages: list[dict], model: str) -> str:
         messages=messages,
         stream=True,
         options={"temperature": 0.1},
+        keep_alive=keep_alive,
     ):
         token   = chunk["message"]["content"]
         buffer += token
@@ -276,6 +279,7 @@ def _run_query(
     client: QdrantClient,
     args: argparse.Namespace,
     history: list[dict],
+    keep_models: bool = False,
 ) -> str:
     """Run one retrieval+generation turn. Returns the assistant's answer."""
     lang = _detect_language(question)
@@ -312,7 +316,15 @@ def _run_query(
 
     context  = _format_context(articles, lang)
     messages = _build_messages(question, context, lang, history, use_system_prompt=USE_SYSTEM_PROMPT and not args.no_system_prompt)
-    return _ask_ollama(messages, model=args.model)
+
+    if not keep_models:
+        import gc
+        global _model, _reranker
+        _model    = None
+        _reranker = None
+        gc.collect()
+
+    return _ask_ollama(messages, model=args.model, keep_alive=300 if keep_models else 0)
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -391,7 +403,7 @@ def main() -> None:
             if not question:
                 break
 
-            answer = _run_query(question, client, args, history)
+            answer = _run_query(question, client, args, history, keep_models=True)
 
             if answer and args.history_turns > 0:
                 history.append({"role": "user",      "content": question})
