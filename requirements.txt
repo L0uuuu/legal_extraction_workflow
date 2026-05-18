@@ -24,3 +24,6 @@ transformers>=4.38.0,<5.0.0
 
 # Phase 7 — Vector database
 qdrant-client>=1.9.0
+
+#model and pipline excution
+streamlit

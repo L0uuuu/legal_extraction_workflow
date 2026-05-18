@@ -30,7 +30,7 @@ MODEL_NAME         = "BAAI/bge-m3"
 RERANKER_NAME      = "BAAI/bge-reranker-v2-m3"
 COLLECTION         = "jort_articles_v2"
 QDRANT_URL         = "http://localhost:6333"
-OLLAMA_MODEL       = "etafakna"
+OLLAMA_MODEL       = "etafkna-qwen3.5-9b"
 TOP_K              = 3
 RERANK_CANDIDATE_K   = 10   # candidates fetched before reranking
 MAX_HISTORY_TURNS    = 5    # conversation turns kept in context (each turn = 1 Q + 1 A)
